@@ -1,13 +1,17 @@
 
-WORK IN PROGRESS, NOT COMPLETE !!
+!!! AS OF Feb 3, 2020: IN-PROGRESS-DOCUEMENT, NOT YET READY !!!
 
-[January 2020]
+# HA setup with LXD + DRBD + CARP with real static IP addresses for the containers
 
-## Two-node HA cluster with Ubuntu, DRBD, LXC and CARP
+This is a recipe for a two-node shared-nothing high-availablity container server with
+static IPs.  The containers will look like real hosts.  Anything you run in the
+containers becomes highly available without any customization.  This does not 
+include a load balancer: the availablity is achieved with failover rather than
+redundancy.
 
-This documents my HA setup.
+## Stack choices
 
-### Ubuntu
+### Ubuntu 18.04
 
 There are really basic choice for your host OS.  Do you use a standard 
 distribution or do you use a specialized container distribution?  My goal
@@ -18,35 +22,41 @@ distributions.
 Of the mainstream distributions, I have a personal preference for Ubuntu.
 I'm pretty sure it will be around for a while.
 
-### LXC instead of LXD
+The hosts are meant to be low maintenance so an Ubuntu LTS release fits the
+bill. 
 
-LXD is a daemon that manages LXC.  The command line for LXD is much
-nicer than the LXC command lines (`lxc-utils`).  Further LXD adds
-extra security in the form of Apparmour.
+### LXD instead of LXC
 
-Some peole say [LXD is safer](https://github.com/lxc/lxd/issues/2771#issuecomment-269926348).
-However others state,
-[With such container, the use of SELinux, AppArmor, Seccomp and capabilities isn't necessary for security](https://linuxcontainers.org/lxc/security/#unprivileged-containers)
+LXC really isn't meant to be used by hand.  The commands are inconsistent and
+painful.
 
-When using DRBD, the container image and configuration can't be in the default
-location.  With LXD, moving the container to a new directory and replacing it with
-a symlink did not work. With LXC, it did.
+LXC/LXD instead of Docker.  Docker is great for containerizing an application.
+It does not containerize whole hosts.  Only the specific ports that are wanted
+are routed to Docker containers.  Persistence data in Docker requires layered
+filesystems.  Sometimes Docker is exactly what's needed.  This is a recipe for
+full system containers with persistence.
 
-LXD keeps its configuration in a database that makes it much harder to have the
-configuration change when filesystems are mounted/unmounted.
+For mainline Linux distros, LXC, LXD, and Docker are the only game in town
+for containers.
 
-RANT:ON
+LXD in 2020 Compared to OpenVZ as of 2008...
 
-Dispite choosing LXC, I have to say: lxc is awful.  You need recipes to do anything.
-The commands are inconsistent.  Nobody's recipes work because they all expect
-things to be slightly different.  The LXC official site documents the current LXC
-version but there doesn't seem to be any resources for people running the stable
-version of LXC. Everything seems to be opinionated but with crappy opinions.  For
-example, the defaults all expect containers to get their IP addresses via DHCP and
-to be NAT'ed. If I wanted unreachable containers, I would use docker.  Openvz 
-configuration is simpler and the commands are nicer.
+Network configuration: OpenVZ trivially allows you to assign multiple static IP
+addresses to containers.  Containers can only use those addresses.  Using static
+IP addresses with LXD is complicated and requires setting up a bridge interface.
+Once a container is on the bridge, it can use freely use any IP address it wants
+to (not constrained by the host).  If I'm wrong about how I set this up, please
+give me corrected instructions that allow me to set up multiple static IP addresses
+per container.
 
-RANT:OFF
+Working on container filesystems.  OpenVZ containers do not use uid maps.  As best
+I can tell, OpenVZ security was such that you couldn't escape from a container so
+a uid map wasn't needed.  Working on the contents of a container with a uid map
+is painful.
+
+Documentation of LXD is plentiful and incomplete.  LXD is very flexible and can be
+deployed in all sorts of situations.  Most of the documentation has examples that
+were not useful for developing this recipe.
 
 ### DRBD
 
@@ -65,6 +75,14 @@ None of those are performant, open source, and support a two-node configuration.
 I used DRBD in my previous setup and while it's a bit complicated to set up,
 it proved itself to be quite reliable.  And quick.
 
+(DRBD configuration)[https://github.com/LINBIT/drbd-8.0/blob/master/scripts/drbd.conf]
+has lots of options.
+
+Missing DRBD feature: call a script every time the status changes, passing in
+all relevant data.  This would enable things like automatically promoting
+one node if they're both secondary (and favoring the node that is not
+out-of-date).
+
 ### CARP
 
 There are a couple of alternatives:
@@ -72,8 +90,7 @@ There are a couple of alternatives:
 - [Heartbeat/Pacemaker](http://linux-ha.org/wiki/Pacemaker).
 
 Heartbeat is quite complicated.  I may try keepalived in the future.  Carp
-(`ucarp`) is simple.  The issue I have with it is that it switches too easily
-and does not have a command line for manual switchover.
+(`ucarp`) is simple.  The issue I have with it is that it switches too easily.
 
 ### Container storage
 
@@ -87,163 +104,338 @@ so that's out.
 [At least one person](https://petrovs.info/2014/11/28/ha-cluster-with-linux-containers/)
 uses btrfs with DRBD and doesn't think it's a terrible idea.
 
-In the past, I used ext4 directly on top of drbd.  For this build, I'll use LVM on
-top of DRBD because that will provide flexibility to change my mind later.
-
-We'll also give btrfs a try (on top of LVM, on top of DRBD.)
+This recipe uses `btrfs`.
 
 ## Recipe
 
-After install Ubuntu 18.04 Server...
+After installing Ubuntu 18.04 server...
 
-```bash
-sudo apt update
-sudo apt upgrade
-sudo apt install lxc-utils 
-sudo dpkg --purge lxd
-sudo dpkg --purge lxd-client
-sudo apt install drbd-utils 
-```
+### Ditch netplan
 
-This will ask configuration questions for `postfix` so be prepared to answer about
-your mail setup.
-
-LXC defaults to priviledged containers even though they're not secure.
-The [documentation](https://www.cyberciti.biz/faq/how-to-create-unprivileged-linux-containers-on-ubuntu-linux/)
-shows how to allow non-priviledged users to run LXC containers.
-
-We'll put the home directory of the LXC user on the DRBD volume(s) so first
-we have to set up DRBD.
-
-
-We'll create a user for each DRBD volume to run all the containers.  Kinda ugly.
-Anyone got a better solution?
-
-```bash
-FS=/x
-for dir in 0; do 
-	U=vc$dir
-	sudo adduser --disabled-password --system --group $U -b $FS --shell /bin/bash $U
-	sudo usermod --add-subgids `awk -F : '{print $2 + 65536 "-" $2 + 131071}' /etc/subgid | sort -rn | head -1` $U
-	sudo usermod --add-subuids `awk -F : '{print $2 + 65536 "-" $2 + 131071}' /etc/subuid | sort -rn | head -1` $U
-	echo "$U veth lxcbr0 200" | sudo tee -a /etc/lxc/lxc-usernet
-	sudo -u $U mkdir -p $FS$dir/$U/.config/lxc
-	sudo -u $U ln -s .config/lxc $FS$dir/$U/config
-	sudo -u $U ln -s .local/share/lxc $FS$dir/$U/containers
-	sudo -u $U cp /etc/lxc/default.conf $FS$dir/$U/.config/lxc
-	(
-		echo lxc.include = /etc/lxc/default.conf
-		awk -F : "/^$U"':/{print "lxc.idmap = u 0 " $2 " 65536"}' /etc/subuid 
-		awk -F : "/^$U"':/{print "lxc.idmap = g 0 " $2 " 65536"}' /etc/subgid
-	) | sudo -u $U tee $FS$dir/$U/.config/lxc/default.conf
-done
-```
-
-Let's double check some things.   Learned from [here](https://myles.sh/configuring-lxc-unprivileged-containers-in-debian-jessie/)
-```bash
-sysctl -a|&grep userns_clone
-```
-
-This should respond with: `kernel.unprivileged_userns_clone = 1`.  If it doesn't then add
-that line to `/etc/sysctl.d/80-lxc-userns.conf`.
-
-## Add-ons
-
-These are recommended extras
-
-### PXE boot 
-
-PXE boot so that if one system goes down, you can use the other one to
-help fix it.
-
-```bash
-apt install dnsmasq
-```
-
-### distrobuilder
-
-If you don't trust pre-built images made by strangers, you can use
-a Go program made by strangers, [distrobuilder](https://github.com/lxc/distrobuilder)
-to build your container images.
-
-### Convert openvz containers
-
-### KVM
-
-## Other resources
-
-[Here](https://www.thomas-krenn.com/en/wiki/HA_Cluster_with_Linux_Containers_based_on_Heartbeat,_Pacemaker,_DRBD_and_LXC)
-is a similar recipe.  The main difference is that it uses a java-based
-graphical user interface to control things.  That's not my cup of tea.
-
-[Here](https://petrovs.info/2014/11/28/ha-cluster-with-linux-containers/) is a recipe that uses LXC,
-DRBD, and btrfs.  This receipe doesn't include how to do failover.
-
-## Docker
-
-## Routable addresses for containers
-
-Make sure that forwarding is turned on:
-
-```bash
-sysctl -a  |& grep forwarding|grep -v mc_forward | grep -v 'forwarding = 1'
-```
-
-Turn off LXC normal bridge:
-
-```bash
-sudo perl -p -i -e 's/^[^#]/##/' /etc/default/lxc-net
-sudo perl -p -i -e 's/^USE_LXC_BRIDGE="false"/USE_LXC_BRIDGE="false"/' /etc/default/lxc
-```
-
-Switch back to `/etc/network/interfaces` (optional)
+Set up networking using `/etc/network/interfaces` since netplan does not support
+interface aliases and is thus not suitable for any serious use.
 
 ```bash
 sudo apt install ifupdown
+echo 'network: {config: disabled}' | sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg 
 ```
 
-Set up a bridge interface.  
-There are many different sets of instructions for doing this.  The
-instructions 
-[here](https://wiki.debian.org/LXC/SimpleBridge) gave good hints.
-The instructions 
-[here](https://askubuntu.com/questions/231666/how-do-i-setup-an-lxc-guest-so-that-it-gets-a-dhcp-address-so-i-can-access-it-on) did not.
+This is the `/etc/network/interfaces` file on my test box:
 
-For example (requires customization to your situation):
-
-```bash
-cat <<END | sudo tee /etc/network/interfaces
+```
 auto lo
 iface lo inet loopback
 
 auto enp0s3
 iface enp0s3 inet dhcp
 
-auto lxcbr0
-iface lxcbr0 inet static
-	address 172.20.10.2/24
-	bridge_ports enp0s8
-	bridge_fd 0
-	bridge_maxwait 0
+iface enp0s8 inet static
+        address 172.20.10.4/24
+```
 
+### Turn on IP forwarding:
+
+```bash
+sudo perl -p -i -e 's/^#?net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/' /etc/sysctl.conf
+sudo sysctl -p /etc/sysctl.conf
+```
+
+Note: This same thing may be needed inside containers
+
+### Partition your DRBD disks.
+
+You won't be booting off a DRBD partition (it may be possible but that's
+not what this recipe is about).
+
+use cfdisk (or whatever partition tool you prefer) to create partitions 
+on the disk to be used for drbd.  
+one 128MB * number-of-data-partitions partition for the meta-data.
+the rest of the disk for data.
+The number of data partitions should probably be one or two. 
+
+### Set up DRBD
+
+The (Ubuntu instructions)[https://help.ubuntu.com/lts/serverguide/drbd.html]
+are easy to follow.  Use them.
+
+Suggestions:
+- Do not using meta-disk internal because it puts the metadata at the end of the partition which means that you can't easily resize it.
+- Use /dev/disk/by-partuuid/xxxxx to reference partition so that if you ever have a disk missing at boot you don't try to overly the wrong disk
+
+### Mount filesystems
+
+If you have more than one DRBD partition, do this multiple times...
+
+```bash
+fs=r0
+drbd=drbd0
+mkfs.btrfs /dev/$drbd
+mkdir /$fs
+echo "/dev/$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | tee -a /etc/fstab
+mount /$fs
+```
+
+### Bridged vs routed vs NAT
+
+The goal of this recipe is full systems with static IP addresses.  Using various
+bridges (`bridge-utils`, LXD bridge, etc) it is possible to set up LXD (and LXC)
+with static IPs that allow the host to reach the container and vice versa.  It's
+a bit painful, but it mostly works.
+
+It falls down when the containers try to talk to other systems on the same
+network.  ARP Reply packets don't make it back to the containers.  There are
+a couple of possible hacky solutions:
+
+- (fake briding)[https://linux.die.net/man/8/parprouted] -- unexplored
+- (forced arp)[https://linux.die.net/man/8/send_arp] -- hacky, error prone, hard to manage
+- a working bridge?   I didn't find one.
+
+In LXD 3.18, there is a new `nictype` supported: `routed` that does exactly
+what's wanted.
+
+Okay, great, but Ubuntu 18.04 has LXD 3.0.3.  There is no official channel
+for upgrading LXD except for (snap)[https://snapcraft.io/].
+
+Installing more recent LXD versions with snap is not
+compatible with setting a override `LXD_DIR` as required for running on top
+of ephemeral (DRBD) filesystems.  Even extracting the binaries from a snap
+doesn't work as they don't honor the `PATH` environment variable.
+
+At this point (arch linux)[https://www.archlinux.org/] was considered as it has all
+the best versions of everything.  Arch is great if you like to keep your systems
+totally up-to-date.  If you've got other life priorties and want to leave your
+servers running happily for long periods of time, then Arch is not such a good
+idea.  There are stories of people successfully upgrading Arch systems after a 
+more than a year.  
+
+With no other choice, building from source became the necessary.
+
+## Build LXC/LXD from source
+
+Install dependencies as suggested by the LXD build-from-source instructions:
+
+```bash
+sudo apt install acl autoconf dnsmasq-base git golang libacl1-dev libcap-dev liblxc1 liblxc-dev libtool libudev-dev libuv1-dev make pkg-config rsync squashfs-tools tar tcl xz-utils ebtables
+sudo apt install libapparmor-dev libseccomp-dev libcap-dev
+sudo apt install lvm2 thin-provisioning-tools btrfs-tools
+sudo apt install curl gettext jq sqlite3 uuid-runtime bzr socat
+```
+
+### Build LXC
+
+Building LXC is easy. It's necessary to do it first so that LXD links against
+a LXC library that knows about `routed` nictypes.
+
+```bash
+export GOPATH=$HOME/LXD
+mkdir -p $GOPATH/src/github.com/lxc $GOPATH/bin
+
+cd $GOPATH/src/github.com/lxc
+git clone https://github.com/lxc/lxc.git
+cd lxc
+git checkout tags/lxc-3.2.1
+./autogen.sh && ./configure && make && sudo make install
+```
+
+### Build LXD
+
+The (offical instructions)[https://github.com/lxc/lxd/] don't really work. 
+
+Get the source this way.  The instructions are flawed and this works better:
+
+cd $GOPATH/github.com/lxc
+git clone https://github.com/lxc/lxd.git
+cd lxd
+git checkout tags/lxd-3.20
+```
+
+Then proceed with the next step in the official instructions:
+
+```bash
+make deps
+```
+
+No cut'n'paste those `export` commands.  You'll need your shell set up.
+
+We need to step in to grab the lxc libraries we just installed:
+
+```bash
+CGO_CFLAGS="$CGO_CFLAGS -I/usr/local/include"
+GO_LDFLAGS="$CGO_LDFLAGS -L/usr/local/lib"
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
+```
+
+Now we can build the rest:
+
+```bash
+make
+```
+
+### Install LXD
+
+```bash
+DEST=/usr/local/lxd
+sudo mkdir -p /usr/local/bin $DEST $DEST/bin $DEST/lib
+sudo cp $GOPATH/bin/* $DEST/bin/
+cd $GOPATH/deps
+for i in *; do
+	if [ -d $i/.libs ]; then
+		sudo mkdir -p $DEST/lib/$i
+		sudo cp -r $i/.libs/* $DEST/lib/$i
+	fi
+done
+for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename $i`; done
+```
+
+### Install wrapper scripts
+
+XXX
+copy lxdwrapper.sh to /usr/local/lxd
+
+## Set up LXD
+
+We need to grab a couple of initialization files from the regular LXD package:
+
+```bash
+fs=r0
+apt install lxd-tools lxd
+systemctl disable lxd
+
+mkdir /$fs/lxd
+
+perl -p -e 's/After=(.*)/After=$1 '"$fs"'.mount/' /lib/systemd/system/lxd.service | \
+	perl -p -e '/^Restart=/ && print "Environment=LXD_DIR='"$fs"'/lxd\n"' | \
+	perl -p -e 's,/usr/bin/lxd,/usr/local/bin/lxd,g' | \
+	tee /etc/systemd/system/"$fs"lxd.service
+
+systemctl start "$fs"lxd
+```
+
+
+### Initialize LXD
+
+Override defaults for storage pool name.
+Override defaults for networks.  If you let lxd "use" a network then
+it will want to manage it with DHCP and NAT.  For people who want to
+manage their own network with static IPs this is a bad thing.
+Do not create a new local network bridge
+
+```bash
+$fs lxd init
+Would you like to use LXD clustering? (yes/no) [default=no]: 
+Do you want to configure a new storage pool? (yes/no) [default=yes]: 
+Name of the new storage pool [default=default]: r0
+Name of the storage backend to use (btrfs, dir, lvm) [default=btrfs]: 
+Would you like to create a new btrfs subvolume under /r0/lxd? (yes/no) [default=yes]: 
+Would you like to connect to a MAAS server? (yes/no) [default=no]: 
+Would you like to create a new local network bridge? (yes/no) [default=yes]: no
+Would you like to configure LXD to use an existing bridge or host interface? (yes/no) [default=no]: yes
+Name of the existing bridge or host interface: enp0s8
+Would you like LXD to be available over the network? (yes/no) [default=no]:  
+Would you like stale cached images to be updated automatically? (yes/no) [default=yes] 
+Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]: yes
+```
+
+### Convert an OpenVZ container
+
+Assuming you have a private (root) directory of an OpenVZ container in `root`:
+
+```
+rm -r root/dev root/proc
+mkdir root/dev root/proc
+(cd root; tar czf ../c1.tgz .)
+
+tac metadata <<'END'
+architecture: "x86_64"
+creation_date: 1580073803
+properties:
+architecture: "x86_64"
+description: "Ubuntu 14.04"
+os: "debian"
+release: "trusty"
 END
+
+$fs lxc image import metadata c1.tgz --alias c1image
+$fs lxc launch c1image c1
 ```
 
-Add to your LXC configuration file:
+### Static IP addresses
 
-```
-# Network configuration
-lxc.net.0.type = veth
-lxc.net.0.ipv4.address = 172.20.10.33/24
-lxc.net.0.ipv4.gateway = 172.20.10.2
-lxc.net.0.link = lxcbr0
-lxc.net.0.name = eth0
+Setting static IP addresses can be done two ways.  First stop the container:
+
+```bash
+$fs lxc stop c1
 ```
 
-Inside the container, change the network configuration for `eth0` to be `manual`.
+You can do it with a command line:
 
-### Easier import of root trees
+```bash
+$fs lxc config device set c1 eth0 nictype=routed parent=enp0s8 ipv4.address 172.20.10.88
+```
 
-curl https://raw.githubusercontent.com/muir/drbd-lxc-carp/master/lxc-directory | \
-	sudo tee /usr/share/lxc/templates/lxc-directory
+Or edit the config of a container
+and configure multiple static IP addresses.  For example:
 
+`$fs lxc config edit dnstest` then define the network with:
+
+```yaml
+devices:
+  eth0:
+    ipv4.address: 172.20.10.88, 172.20.10.90
+    nictype: routed
+    parent: enp0s8
+    type: nic
+```
+
+Inside the container, the network should not be configured.  It will start up as it needs to be.
+Do not do DHCP.
+
+Then restart:
+
+```bash
+$fs lxc start c1
+```
+
+## CARP
+
+```bash
+apt install ucarp
+```
+
+
+## Bonding ethernets for reliability and capacity
+
+Typically in a DRBD setup, there will be a private cross-over cable
+between the two hosts.  There is also likely a regular ethernet with
+a switch that they're both connected to.
+
+For reliability and performance, there are advantages to using both
+networks at once.  The reliability advantage is that DRBD gets really
+unhappy if both nodes are up but cannot reach each other.
+
+Assuming that you aren't already using VLANs then the idea is to continue
+not using VLANs except for the bonded DRBD traffic.
+
+There are lots of people who do VLAN on top of bonding.  There are very few
+people who do bonding on top ov VLAN.  One that does talk about it is
+(scorchio)[http://scorchio.pure-guava.org.nz/posts/Bonding_over_VLAN/].
+
+See (vlan setup)[https://wiki.ubuntu.com/vlan] for some basic vlan
+configuration settings.
+
+If the primary interface is untagged, leave it be.  Add a tagged interface
+too (they can co-exist).  Set up the tagged interface on the main ethernet.
+
+Then set up (bonding)[https://help.ubuntu.com/community/UbuntuBonding]
+between the private ethernet and the VLAN on the main
+ethernet.  Use `bond-mode balance-rr` for simplicity.
+
+Since DRBD traffic will now be going over the shared ethernet, perhaps
+some security is order.  In the DRBD config, set
+
+```
+  net {
+    cram-hmac-alg "sha1";
+    shared-secret "your very own secret";
+  }
+```
