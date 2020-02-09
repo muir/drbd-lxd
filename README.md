@@ -239,10 +239,11 @@ git checkout tags/lxc-3.2.1
 
 ### Build LXD
 
-The (offical instructions)[https://github.com/lxc/lxd/] don't really work. 
+The [offical instructions](https://github.com/lxc/lxd/) don't really work. 
 
 Get the source this way.  The instructions are flawed and this works better:
 
+```bash
 cd $GOPATH/github.com/lxc
 git clone https://github.com/lxc/lxd.git
 cd lxd
@@ -255,7 +256,7 @@ Then proceed with the next step in the official instructions:
 make deps
 ```
 
-No cut'n'paste those `export` commands.  You'll need your shell set up.
+Now cut'n'paste those `export` commands.  You'll need your shell set up.
 
 We need to step in to grab the lxc libraries we just installed:
 
