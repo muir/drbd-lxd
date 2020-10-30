@@ -1,7 +1,7 @@
 
 !!! AS OF Feb 3, 2020: IN-PROGRESS-DOCUEMENT, NOT YET READY !!!
 
-# HA setup with LXD + DRBD + CARP with real static IP addresses for the containers
+# HA setup with LXD + DRBD with real static IP addresses for the containers
 
 This is a recipe for a two-node shared-nothing high-availablity container server with
 static IPs.  The containers will look like real hosts.  Anything you run in the
@@ -13,7 +13,7 @@ redundancy.
 
 ### Ubuntu 18.04
 
-There are really basic choice for your host OS.  Do you use a standard 
+There are really basic choices for your host OS.  Do you use a standard 
 distribution or do you use a specialized container distribution?  My goal
 here is a choice that will remain valid for the next 15 years.  Since
 I was previously burned by openvz on Debian, I'm shying away from specialty
@@ -25,9 +25,17 @@ I'm pretty sure it will be around for a while.
 The hosts are meant to be low maintenance so an Ubuntu LTS release fits the
 bill. 
 
+These instructions will not work with Ubuntu 20.04.  In 20.04, the
+deb package for lxd is gone and all that's left is the snap package.
+
+To install lxd totally by hand, systemd config files need to be created,
+probably based on the files in Ubuntu 18.04.
+
+It looks like Ubuntu 20.04 does not include lxd except as a snap :-(
+
 ### LXD instead of LXC
 
-LXC really isn't meant to be used by hand.  The commands are inconsistent and
+LXC really isn't meant to be used directly by humans.  The commands are inconsistent and
 painful.
 
 LXC/LXD instead of Docker.  Docker is great for containerizing an application.
@@ -61,7 +69,7 @@ were not useful for developing this recipe.
 ### DRBD
 
 There aren't a lot of choices for a shared-nothing HA setup.  
-(DRDB)[https://help.ubuntu.com/lts/serverguide/drbd.html] provides over-the-network
+[DRBD](https://help.ubuntu.com/lts/serverguide/drbd.html) provides over-the-network
 mirroring of raw devices.  It can be used as the block device for most filesytems.
 
 Alternatively, there are a few distributed filesystems: 
@@ -75,7 +83,7 @@ None of those are performant, open source, and support a two-node configuration.
 I used DRBD in my previous setup and while it's a bit complicated to set up,
 it proved itself to be quite reliable.  And quick.
 
-(DRBD configuration)[https://github.com/LINBIT/drbd-8.0/blob/master/scripts/drbd.conf]
+[DRBD configuration](https://github.com/LINBIT/drbd-8.0/blob/master/scripts/drbd.conf)
 has lots of options.
 
 Missing DRBD feature: call a script every time the status changes, passing in
@@ -83,18 +91,13 @@ all relevant data.  This would enable things like automatically promoting
 one node if they're both secondary (and favoring the node that is not
 out-of-date).
 
-### CARP
-
-There are a couple of alternatives:
-- [VRRP (keepalived)](https://www.keepalived.org/);
-- [Heartbeat/Pacemaker](http://linux-ha.org/wiki/Pacemaker).
-
-Heartbeat is quite complicated.  I may try keepalived in the future.  Carp
-(`ucarp`) is simple.  The issue I have with it is that it switches too easily.
+The biggest danger of running DRBD is getting into a split-brain situation. This can
+happen if only one system is up and then it is brought down and then the other system
+is up.  
 
 ### Container storage
 
-LXC supports many ways to configure the storage for your containers.
+LXD supports many ways to configure the storage for your containers.
 If you want snapshotting capability then you need to run on top of LVM
 or use ZFS or btrfs.  That's useful.
 
@@ -106,6 +109,24 @@ uses btrfs with DRBD and doesn't think it's a terrible idea.
 
 This recipe uses `btrfs`.
 
+### Scripts for failover
+
+There are a couple of alternatives:
+- [Carp](https://ucarp.wordpress.com/) / (ucarp(8))[http://manpages.ubuntu.com/manpages/bionic/man8/ucarp.8.html]
+- [VRRP (keepalived)](https://www.keepalived.org/);
+- [Heartbeat/Pacemaker](http://linux-ha.org/wiki/Pacemaker).
+
+Heartbeat is quite complicated.  
+Carp (`ucarp`) is simple.  The issue I have with it is that it switches too easily.
+keepalived looks moderately complicated but isn't well targeted to this applciation.
+
+In general, these daemons try to provide very fast failover.  That's not what's needed
+for this. Failover when you have to mount filesystems and restart a bunch of containers 
+is somewhat expensive so we don't want a daemon that reacts instantly.
+
+Instead, we can use use [drbd-watcher](https://github.com/muir/drbd-watcher) to invoke
+scripts when the DRBD situation changes.
+
 ## Recipe
 
 After installing Ubuntu 18.04 server...
@@ -113,7 +134,7 @@ After installing Ubuntu 18.04 server...
 ### Ditch netplan
 
 Set up networking using `/etc/network/interfaces` since netplan does not support
-interface aliases and is thus not suitable for any serious use.
+interface aliases and is thus not suitable for anything custom.
 
 ```bash
 sudo apt install ifupdown
@@ -155,7 +176,7 @@ The number of data partitions should probably be one or two.
 
 ### Set up DRBD
 
-The (Ubuntu instructions)[https://help.ubuntu.com/lts/serverguide/drbd.html]
+The [Ubuntu instructions](https://help.ubuntu.com/lts/serverguide/drbd.html)
 are easy to follow.  Use them.
 
 Suggestions:
@@ -186,22 +207,22 @@ It falls down when the containers try to talk to other systems on the same
 network.  ARP Reply packets don't make it back to the containers.  There are
 a couple of possible hacky solutions:
 
-- (fake briding)[https://linux.die.net/man/8/parprouted] -- unexplored
-- (forced arp)[https://linux.die.net/man/8/send_arp] -- hacky, error prone, hard to manage
+- [fake briding](https://linux.die.net/man/8/parprouted) -- unexplored
+- [forced arp](https://linux.die.net/man/8/send_arp) -- hacky, error prone, hard to manage
 - a working bridge?   I didn't find one.
 
 In LXD 3.18, there is a new `nictype` supported: `routed` that does exactly
 what's wanted.
 
 Okay, great, but Ubuntu 18.04 has LXD 3.0.3.  There is no official channel
-for upgrading LXD except for (snap)[https://snapcraft.io/].
+for upgrading LXD except for [snap](https://snapcraft.io/).
 
 Installing more recent LXD versions with snap is not
 compatible with setting a override `LXD_DIR` as required for running on top
 of ephemeral (DRBD) filesystems.  Even extracting the binaries from a snap
 doesn't work as they don't honor the `PATH` environment variable.
 
-At this point (arch linux)[https://www.archlinux.org/] was considered as it has all
+At this point [arch linux](https://www.archlinux.org/) was considered as it has all
 the best versions of everything.  Arch is great if you like to keep your systems
 totally up-to-date.  If you've got other life priorties and want to leave your
 servers running happily for long periods of time, then Arch is not such a good
@@ -288,10 +309,21 @@ done
 for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename $i`; done
 ```
 
-### Install wrapper scripts
+### Install scripts
 
-XXX
-copy lxdwrapper.sh to /usr/local/lxd
+```bash
+DEST=/usr/local/lxd
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
+sudo chmod +x $DEST/lxdwrapper.sh
+```
+
+If you have more than one DRBD partition, do this multiple times...
+
+```bash
+fs=r0
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/fswrapper.sh | sudo tee /usr/local/bin/$fs
+sudo chmod +x $DEST/usr/local/bin/$fs
+```
 
 ## Set up LXD
 
@@ -299,19 +331,48 @@ We need to grab a couple of initialization files from the regular LXD package:
 
 ```bash
 fs=r0
-apt install lxd-tools lxd
-systemctl disable lxd
+sudo apt install lxd-tools lxd
+sudo systemctl disable lxd
 
-mkdir /$fs/lxd
+sudo mkdir /$fs/lxd
 
 perl -p -e 's/After=(.*)/After=$1 '"$fs"'.mount/' /lib/systemd/system/lxd.service | \
 	perl -p -e '/^Restart=/ && print "Environment=LXD_DIR='"$fs"'/lxd\n"' | \
 	perl -p -e 's,/usr/bin/lxd,/usr/local/bin/lxd,g' | \
-	tee /etc/systemd/system/"$fs"lxd.service
+	sudo tee /etc/systemd/system/"$fs"lxd.service
 
-systemctl start "$fs"lxd
+sudo systemctl start "$fs"lxd
 ```
 
+### For Ubuntu 20.04 and other systems that don't have `lxd.service`...
+
+An alternative:
+
+```bash
+fs=r0
+cat << END | sudo tee /etc/systemd/system/"$fs"lxd.service
+[Unit]
+Description=$fs LXD - main daemon
+After=network-online.target openvswitch-switch.service lxcfs.service 
+Requires=network-online.target lxcfs.service 
+Documentation=man:lxd(1)
+
+[Service]
+EnvironmentFile=-/etc/environment
+Environment=LXD_DIR=${fs}/lxd
+ExecStartPre=/usr/lib/x86_64-linux-gnu/lxc/lxc-apparmor-load
+ExecStart=/usr/local/bin/lxd --group lxd --logfile=/var/log/lxd/lxd.log
+ExecStartPost=/usr/local/bin/lxd waitready --timeout=600
+KillMode=process
+TimeoutStartSec=600s
+TimeoutStopSec=30s
+Restart=on-failure
+LimitNOFILE=1048576
+LimitNPROC=infinity
+TasksMax=infinity
+
+[Install]
+END
 
 ### Initialize LXD
 
@@ -336,6 +397,76 @@ Would you like LXD to be available over the network? (yes/no) [default=no]:
 Would you like stale cached images to be updated automatically? (yes/no) [default=yes] 
 Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]: yes
 ```
+
+### DRBD watcher script
+
+Rather than using a keep alive daemon of some sort, we'll simply monitor the
+DRBD status.
+
+#### Watcher
+
+Install [drbd-watcher](https://github.com/muir/drbd-watcher) as
+`/usr/local/bin/drbd-watcher`.
+
+#### Fencing
+
+Install a script to manage fencing.  This can be implemented in many ways. The key
+thing is to use an external service that is highly reliable.
+
+Commands should be:
+
+- `lock $RESOURCE`
+- `unlock $RESOURCE`
+
+Where `$RESOURCE` should be unique in your lock script and storage and
+tied to your DRBD resource.  For lock storage that is used just by a
+pair of systems, this can be just the resource identifier (eg `"r0"`)
+and `$HOST` is the local hostname.  Status can be returned by the exit
+code: 0 for success, 1 for failure.
+
+This fencing script uses google cloud storage.
+
+Install [gsutil & gcloud](https://cloud.google.com/storage/docs/gsutil_install#deb)
+
+Install the script:
+
+```bash
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
+chmod +x /usr/local/bin/drbd-fence 
+```
+
+#### Reaction script
+
+Install a script to react to changes in DRBD status.  The danger with such a script
+is having some kind of fencing so that if you have only one node up and then bring it
+down and then bring up the other node.
+
+```bash
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/drbd-react.sh | sudo tee /usr/local/bin/drbd-react
+sudo chmod +x $DEST/usr/local/bin/drbd-react
+```
+
+#### Run the script on boot and keep it running
+
+This seems to be the core of systemd...
+
+```bash
+cat << END | sudo tee /etc/systemd/system/drbd-watcher.service
+[Unit]
+Description=Monitor DRBD for changes
+
+[Service]
+ExecStart=/usr/local/bin/drbd-watcher /usr/local/bin/drbd-react
+Restart=always
+RestartSec=300
+
+[Install]
+WantedBy=default.target
+END
+
+systemctl start drbd-watcher
+```
+
 
 ### Convert an OpenVZ container
 
@@ -419,15 +550,15 @@ not using VLANs except for the bonded DRBD traffic.
 
 There are lots of people who do VLAN on top of bonding.  There are very few
 people who do bonding on top ov VLAN.  One that does talk about it is
-(scorchio)[http://scorchio.pure-guava.org.nz/posts/Bonding_over_VLAN/].
+[scorchio](http://scorchio.pure-guava.org.nz/posts/Bonding_over_VLAN/).
 
-See (vlan setup)[https://wiki.ubuntu.com/vlan] for some basic vlan
+See [vlan setup](https://wiki.ubuntu.com/vlan) for some basic vlan
 configuration settings.
 
 If the primary interface is untagged, leave it be.  Add a tagged interface
 too (they can co-exist).  Set up the tagged interface on the main ethernet.
 
-Then set up (bonding)[https://help.ubuntu.com/community/UbuntuBonding]
+Then set up [bonding](https://help.ubuntu.com/community/UbuntuBonding)
 between the private ethernet and the VLAN on the main
 ethernet.  Use `bond-mode balance-rr` for simplicity.
 
@@ -440,3 +571,30 @@ some security is order.  In the DRBD config, set
     shared-secret "your very own secret";
   }
 ```
+
+## Extras
+
+### PXE boot 
+
+PXE boot so that if one system goes down, you can use the other one to
+help fix it.
+
+```bash
+apt install dnsmasq
+```
+
+### distrobuilder
+
+If you don't trust pre-built images made by strangers, you can use
+a Go program made by strangers, [distrobuilder](https://github.com/lxc/distrobuilder)
+to build your container images.
+
+## Other resources
+
+[Here](https://www.thomas-krenn.com/en/wiki/HA_Cluster_with_Linux_Containers_based_on_Heartbeat,_Pacemaker,_DRBD_and_LXC)
+is a similar recipe.  The main difference is that it uses a java-based
+graphical user interface to control things.  That's not my cup of tea.
+
+[Here](https://petrovs.info/2014/11/28/ha-cluster-with-linux-containers/) is a recipe that uses LXC,
+DRBD, and btrfs.  This receipe doesn't include how to do failover.
+
