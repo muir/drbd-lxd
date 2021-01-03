@@ -9,9 +9,12 @@ containers becomes highly available without any customization.  This does not
 include a load balancer: the availablity is achieved with failover rather than
 redundancy.
 
+This is an excellent choice for a 2-system setup.  It works fine with a few
+systems but for more than a few, other setups are reccomended.
+
 ## Stack choices
 
-### Ubuntu 18.04
+### Ubuntu 20.04
 
 There are really basic choices for your host OS.  Do you use a standard 
 distribution or do you use a specialized container distribution?  My goal
@@ -25,13 +28,8 @@ I'm pretty sure it will be around for a while.
 The hosts are meant to be low maintenance so an Ubuntu LTS release fits the
 bill. 
 
-These instructions will not work with Ubuntu 20.04.  In 20.04, the
-deb package for lxd is gone and all that's left is the snap package.
-
-To install lxd totally by hand, systemd config files need to be created,
-probably based on the files in Ubuntu 18.04.
-
-It looks like Ubuntu 20.04 does not include lxd except as a snap :-(
+LXD support in Ubuntu 20.04 is only as a snap.  We'll have to install LXD
+completely by hand.
 
 ### LXD instead of LXC
 
@@ -47,7 +45,7 @@ full system containers with persistence.
 For mainline Linux distros, LXC, LXD, and Docker are the only game in town
 for containers.
 
-LXD in 2020 Compared to OpenVZ as of 2008...
+LXD in 2021 Compared to OpenVZ as of 2008...
 
 Network configuration: OpenVZ trivially allows you to assign multiple static IP
 addresses to containers.  Containers can only use those addresses.  Using static
@@ -129,7 +127,7 @@ scripts when the DRBD situation changes.
 
 ## Recipe
 
-After installing Ubuntu 18.04 server...
+After installing Ubuntu 20.04 server...
 
 ### Ditch netplan
 
@@ -137,7 +135,7 @@ Set up networking using `/etc/network/interfaces` since netplan does not support
 interface aliases and is thus not suitable for anything custom.
 
 ```bash
-sudo apt install ifupdown
+sudo apt install ifupdown net-tools
 echo 'network: {config: disabled}' | sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg 
 ```
 
@@ -152,6 +150,21 @@ iface enp0s3 inet dhcp
 
 iface enp0s8 inet static
         address 172.20.10.4/24
+```
+
+Once that's done you can make it totally final with:
+
+```bash
+dpkg -P cloud-init
+rm -rf /etc/cloud
+```
+
+Ubuntu 20.04 can delay startup while looking for a network.  This isn't helpful for a server.
+Disable it for good.
+
+```bash
+systemctl disable systemd-networkd-wait-online.service
+systemctl mask systemd-networkd-wait-online.service
 ```
 
 ### Turn on IP forwarding:
@@ -176,7 +189,7 @@ The number of data partitions should probably be one or two.
 
 ### Set up DRBD
 
-The [Ubuntu instructions](https://help.ubuntu.com/lts/serverguide/drbd.html)
+The [Ubuntu instructions](https://ubuntu.com/server/docs/ubuntu-ha-drbd)
 are easy to follow.  Use them.
 
 Suggestions:
@@ -189,10 +202,10 @@ If you have more than one DRBD partition, do this multiple times...
 
 ```bash
 fs=r0
-drbd=drbd0
-mkfs.btrfs /dev/$drbd
+drbd=0
+
 mkdir /$fs
-echo "/dev/$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | tee -a /etc/fstab
+echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | tee -a /etc/fstab
 mount /$fs
 ```
 
@@ -214,33 +227,33 @@ a couple of possible hacky solutions:
 In LXD 3.18, there is a new `nictype` supported: `routed` that does exactly
 what's wanted.
 
-Okay, great, but Ubuntu 18.04 has LXD 3.0.3.  There is no official channel
-for upgrading LXD except for [snap](https://snapcraft.io/).
-
-Installing more recent LXD versions with snap is not
+Installing LXD with [snap](https://snapcraft.io/) is not
 compatible with setting a override `LXD_DIR` as required for running on top
 of ephemeral (DRBD) filesystems.  Even extracting the binaries from a snap
 doesn't work as they don't honor the `PATH` environment variable.
 
-At this point [arch linux](https://www.archlinux.org/) was considered as it has all
-the best versions of everything.  Arch is great if you like to keep your systems
-totally up-to-date.  If you've got other life priorties and want to leave your
-servers running happily for long periods of time, then Arch is not such a good
-idea.  There are stories of people successfully upgrading Arch systems after a 
-more than a year.  
-
-With no other choice, building from source became the necessary.
+Since we're installing LXD manually, we can use the latest version.
 
 ## Build LXC/LXD from source
 
 Install dependencies as suggested by the LXD build-from-source instructions:
 
 ```bash
-sudo apt install acl autoconf dnsmasq-base git golang libacl1-dev libcap-dev liblxc1 liblxc-dev libtool libudev-dev libuv1-dev make pkg-config rsync squashfs-tools tar tcl xz-utils ebtables
-sudo apt install libapparmor-dev libseccomp-dev libcap-dev
-sudo apt install lvm2 thin-provisioning-tools btrfs-tools
-sudo apt install curl gettext jq sqlite3 uuid-runtime bzr socat
+sudo apt install acl autoconf dnsmasq-base git golang \
+	libacl1-dev libcap-dev liblxc1 liblxc-dev libtool \
+	libudev-dev libuv1-dev make pkg-config rsync \
+	squashfs-tools tar tcl xz-utils ebtables \
+	libapparmor-dev libseccomp-dev libcap-dev \
+	lvm2 thin-provisioning-tools btrfs-progs \
+	curl gettext jq sqlite3 libsqlite3-dev uuid-runtime bzr socat 
 ```
+
+### Pick a release
+
+Find a LXC release from their
+[download page](https://linuxcontainers.org/lxc/downloads/).
+Find a LXD release from their
+[downlaod page](https://linuxcontainers.org/lxd/downloads/)
 
 ### Build LXC
 
@@ -248,36 +261,37 @@ Building LXC is easy. It's necessary to do it first so that LXD links against
 a LXC library that knows about `routed` nictypes.
 
 ```bash
-export GOPATH=$HOME/LXD
-mkdir -p $GOPATH/src/github.com/lxc $GOPATH/bin
-
-cd $GOPATH/src/github.com/lxc
-git clone https://github.com/lxc/lxc.git
-cd lxc
-git checkout tags/lxc-3.2.1
+LXC_VERSION=4.0.5
+mkdir -p $HOME/LXC
+cd $HOME/LXC
+wget https://linuxcontainers.org/downloads/lxc/lxc-$LXC_VERSION.tar.gz
+tar xf lxc-$LXC_VERSION.tar.gz
+cd lxc-$LXC_VERSION
 ./autogen.sh && ./configure && make && sudo make install
 ```
 
 ### Build LXD
 
-The [offical instructions](https://github.com/lxc/lxd/) don't really work. 
-
-Get the source this way.  The instructions are flawed and this works better:
-
-```bash
-cd $GOPATH/github.com/lxc
-git clone https://github.com/lxc/lxd.git
-cd lxd
-git checkout tags/lxd-3.20
-```
-
-Then proceed with the next step in the official instructions:
+The 
+[build instructions](https://github.com/lxc/lxd) on the official site
+don't work.  Try these instead.
 
 ```bash
+LXD_VERSION=4.9
+mkdir -p $HOME/LXD
+cd $HOME/LXD
+wget https://linuxcontainers.org/downloads/lxd/lxd-$LXD_VERSION.tar.gz
+tar xf lxd-$LXD_VERSION.tar.gz
+mv lxd-$LXD_VERSION/_dist/* .
+rm src/github.com/lxc/lxd && mkdir src/github.com/lxc/lxd
+mv lxd-$LXD_VERSION/* src/github.com/lxc/lxd
+cd src/github.com/lxc/lxd
+rmdir _dist && ln -s ../../.. _dist
+export GOPATH=$HOME/LXD
 make deps
 ```
 
-Now cut'n'paste those `export` commands.  You'll need your shell set up.
+Now cut'n'paste those `export` commands into your shell.
 
 We need to step in to grab the lxc libraries we just installed:
 
@@ -577,11 +591,42 @@ some security is order.  In the DRBD config, set
 ### PXE boot 
 
 PXE boot so that if one system goes down, you can use the other one to
-help fix it.
+help fix it.  There are many ways to do this.  The easiest is to use
+tftp to serve a pxelinux that boots using a ramdisk loaded over http.
+
 
 ```bash
-apt install dnsmasq
+apt install atftpd openbsd-inetd micro-httpd
 ```
+
+Turn off serving on port 80.  Why does anything think that installing an unconfigured
+web server is a good idea?
+Since nobody uses gopher anymore, that's a fine port for serving /tftpboot files
+
+```bash
+perl -p -i 's/^(www\s)/#$1/' /etc/inetd.conf
+perl -p -i '/^tftp\s/ && print "gopher	stream	tcp	nowait	nobody	/usr/sbin/tcpd /usr/sbin/micro-httpd /tftpboot\n"' /etc/inetd.conf
+service openbsd-inetd restart
+```
+
+Build a /tftpboot
+
+```bash
+VERSION=20.04
+wget http://old-releases.ubuntu.com/releases/$VERSION/ubuntu-$VERSION-live-server-amd64.iso
+mkdir -p /tftpboot/ubuntu$VERSION
+mv ubuntu-$VERSION-live-server-amd64.iso /tftpboot/ubuntu$VERSION
+mount /tftpboot/ubuntu$VERSION/ubuntu-$VERSION-live-server-amd64.iso /mnt
+cp /mnt/casper/vmlinuz /mnt/casper/initrd /mnt/ubuntu$VERSION
+
+
+```
+
+### obvious tools that 
+
+Ubuntu 20.04 makes /etc/rc.local a pain. 
+[here's how](https://linuxmedium.com/how-to-enable-etc-rc-local-with-systemd-on-ubuntu-20-04/)
+
 
 ### distrobuilder
 
