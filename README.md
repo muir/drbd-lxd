@@ -327,7 +327,7 @@ for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename
 
 ```bash
 DEST=/usr/local/lxd
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
+curl -s https://raw.githubusercontent.com/muir/drbd-lxc/master/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
 sudo chmod +x $DEST/lxdwrapper.sh
 ```
 
@@ -335,38 +335,22 @@ If you have more than one DRBD partition, do this multiple times...
 
 ```bash
 fs=r0
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/fswrapper.sh | sudo tee /usr/local/bin/$fs
-sudo chmod +x $DEST/usr/local/bin/$fs
+curl -s https://raw.githubusercontent.com/muir/drbd-lxc/master/fswrapper.sh | sudo tee /usr/local/bin/$fs
+sudo chmod +x /usr/local/bin/$fs
 ```
 
 ## Set up LXD
 
-We need to grab a couple of initialization files from the regular LXD package:
+The following is derrived from the system files that are part of the Ubuntu 18.04 lxd package.  Do this
+for each partition.
 
 ```bash
-fs=r0
-sudo apt install lxd-tools lxd
-sudo systemctl disable lxd
+mkdir /var/log/lxd
 
-sudo mkdir /$fs/lxd
-
-perl -p -e 's/After=(.*)/After=$1 '"$fs"'.mount/' /lib/systemd/system/lxd.service | \
-	perl -p -e '/^Restart=/ && print "Environment=LXD_DIR='"$fs"'/lxd\n"' | \
-	perl -p -e 's,/usr/bin/lxd,/usr/local/bin/lxd,g' | \
-	sudo tee /etc/systemd/system/"$fs"lxd.service
-
-sudo systemctl start "$fs"lxd
-```
-
-### For Ubuntu 20.04 and other systems that don't have `lxd.service`...
-
-An alternative:
-
-```bash
 fs=r0
 cat << END | sudo tee /etc/systemd/system/"$fs"lxd.service
 [Unit]
-Description=$fs LXD - main daemon
+Description=${fs} LXD - main daemon
 After=network-online.target openvswitch-switch.service lxcfs.service 
 Requires=network-online.target lxcfs.service 
 Documentation=man:lxd(1)
@@ -384,9 +368,10 @@ Restart=on-failure
 LimitNOFILE=1048576
 LimitNPROC=infinity
 TasksMax=infinity
-
-[Install]
 END
+
+systemctl start "$fs"lxd
+```
 
 ### Initialize LXD
 

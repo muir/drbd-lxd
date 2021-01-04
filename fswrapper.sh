@@ -1,7 +1,7 @@
 #!/bin/bash 
 
 fs=/`basename $0`
-dir=`$dirname $0`
+dir=`dirname $0`
 cmd="$1"
 
 export F="$fs"
