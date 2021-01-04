@@ -404,13 +404,14 @@ DRBD status.
 
 #### Watcher
 
-Install [drbd-watcher](https://github.com/muir/drbd-watcher) as
-`/usr/local/bin/drbd-watcher`.
+Install [drbd-watcher](https://github.com/muir/drbd-watcher), a small program
+that invokes scripts to react to changes in DRBD status.
 
 #### Fencing
 
 Install a script to manage fencing.  This can be implemented in many ways. The key
-thing is to use an external service that is highly reliable.
+thing is to use **external** storage that is highly reliable.  External means: not
+on the systems that need to be fenced from each other.
 
 Commands should be:
 
@@ -423,15 +424,16 @@ pair of systems, this can be just the resource identifier (eg `"r0"`)
 and `$HOST` is the local hostname.  Status can be returned by the exit
 code: 0 for success, 1 for failure.
 
-This fencing script uses google cloud storage.
+__This__ fencing script uses google cloud storage.  If you don't like that, pick
+a different external storage system and write a trivial script to access it.
 
 Install [gsutil & gcloud](https://cloud.google.com/storage/docs/gsutil_install#deb)
 
 Install the script:
 
 ```bash
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
-chmod +x /usr/local/bin/drbd-fence 
+curl -s https://raw.githubusercontent.com/muir/drbd-lxc/master/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
+sudo chmod +x /usr/local/bin/drbd-fence 
 ```
 
 #### Reaction script
