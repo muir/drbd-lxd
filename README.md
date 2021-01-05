@@ -681,9 +681,13 @@ disk		boot from local disk (DEFAULT)
 END
 
 sudo chmod -R a+r /tftpboot
+```
 
 #### Add an ubuntu live CD
 
+Pick one from [here](http://releases.ubuntu.com/)
+
+```bash
 VERSION=20.04.1
 wget http://old-releases.ubuntu.com/releases/$VERSION/ubuntu-$VERSION-live-server-amd64.iso
 sudo mkdir -p /tftpboot/ubuntu$VERSION
@@ -708,11 +712,13 @@ ubuntu${VERSION}   boot ubuntu live cd
 END
 
 sudo chmod -R a+r /tftpboot
-
 ```
 
 You also need to [configure your DHCP server](https://help.ubuntu.com/community/DisklessUbuntuHowto).
 Note: follow the instructions there just for DHCP setup.  You won't need NFS.
+
+There are also decent DHCP server setup instructions in
+`/usr/share/doc/syslinux-common/asciidoc/pxelinux.txt.gz`
 
 ## Other recipes
 
