@@ -7,7 +7,8 @@ This is a recipe for a two-node shared-nothing high-availablity container server
 static IPs.  The containers will look like real hosts.  Anything you run in the
 containers becomes highly available without any customization.  This does not
 include a load balancer: the availablity is achieved with failover rather than
-redundancy.
+redundancy.  Containers have persistent storage that fails over with the
+contaniner.
 
 This is an excellent choice for a 2-system setup.  It works fine with a few
 systems but for more than a few, other setups are reccomended.
@@ -110,7 +111,7 @@ This recipe uses `btrfs`.
 ### Scripts for failover
 
 There are a couple of alternatives:
-- [Carp](https://ucarp.wordpress.com/) / (ucarp(8))[http://manpages.ubuntu.com/manpages/bionic/man8/ucarp.8.html]
+- [Carp](https://ucarp.wordpress.com/) / [ucarp(8)](http://manpages.ubuntu.com/manpages/bionic/man8/ucarp.8.html)
 - [VRRP (keepalived)](https://www.keepalived.org/);
 - [Heartbeat/Pacemaker](http://linux-ha.org/wiki/Pacemaker).
 
@@ -122,8 +123,8 @@ In general, these daemons try to provide very fast failover.  That's not what's 
 for this. Failover when you have to mount filesystems and restart a bunch of containers
 is somewhat expensive so we don't want a daemon that reacts instantly.
 
-Instead, we can use use [drbd-watcher](https://github.com/muir/drbd-watcher) to invoke
-scripts when the DRBD situation changes.
+Instead, we'll leverage the built-in monitoring that DRBD provides to invoke
+scripts when the DRBD situation changes.  [drbd-watcher](https://github.com/muir/drbd-watcher) 
 
 ## Recipe
 
@@ -160,7 +161,7 @@ rm -rf /etc/cloud
 ```
 
 Ubuntu 20.04 can delay startup while looking for a network.  This isn't helpful for a server.
-Disable it for good.
+Disable it for good:
 
 ```bash
 systemctl disable systemd-networkd-wait-online.service
@@ -174,7 +175,7 @@ sudo perl -p -i -e 's/^#?net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/' /etc/sys
 sudo sysctl -p /etc/sysctl.conf
 ```
 
-Note: This same thing may be needed inside containers
+Note: This same thing may be needed inside containers.
 
 ### Partition your DRBD disks.
 
@@ -195,6 +196,7 @@ are easy to follow.  Use them.
 Suggestions:
 - Do not using meta-disk internal because it puts the metadata at the end of the partition which means that you can't easily resize it.
 - Use /dev/disk/by-partuuid/xxxxx to reference partition so that if you ever have a disk missing at boot you don't try to overly the wrong disk
+- Put the resource specific configs in `/etc/drbd.d/r[0-9].res`
 
 ### Mount filesystems
 
@@ -232,7 +234,9 @@ compatible with setting a override `LXD_DIR` as required for running on top
 of ephemeral (DRBD) filesystems.  Even extracting the binaries from a snap
 doesn't work as they don't honor the `PATH` environment variable.
 
-Since we're installing LXD manually, we can use the latest version.
+Since we're installing LXD manually, we can use the latest version.  
+Note: Ubuntu 18.04 includes lxd as a regular package, but the version is too
+old to support routed networking.
 
 ## Build LXC/LXD from source
 
@@ -325,11 +329,16 @@ for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename
 
 ### Install scripts
 
+The first is a wrapper around LXD that sets LD_LIBRARY_PATH
+
 ```bash
 DEST=/usr/local/lxd
 curl -s https://raw.githubusercontent.com/muir/drbd-lxc/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
 sudo chmod +x $DEST/lxdwrapper.sh
 ```
+
+The second switches betwen multiple LXD installations since you need a separate LXD
+for each drbd partition.
 
 If you have more than one DRBD partition, do this multiple times...
 
@@ -341,8 +350,8 @@ sudo chmod +x /usr/local/bin/$fs
 
 ## Set up LXD
 
-The following is derrived from the system files that are part of the Ubuntu 18.04 lxd package.  Do this
-for each partition.
+The following is loosely derived from the system files that are part of the Ubuntu 18.04 lxd package.  Do this
+for each drbd filesytem.
 
 ```bash
 mkdir /var/log/lxd
@@ -408,6 +417,23 @@ Install [drbd-watcher](https://github.com/muir/drbd-watcher), a small program
 that invokes scripts to react to changes in DRBD status.
 
 #### Fencing
+
+Fencing is an important concept with two-node failover.  In normal operation,
+the systems run in master/slave mode with data writes returning only when the data
+has been written to both systems.
+
+If one system is down, the other can run.  At this point the other system becomes
+out-of-sync and stale, but since it's down, it doesn't know that it's stale.
+
+When the stale system comes up, if it cannot reach the other system, it doesn't
+know if it's safe to become the master.  If it were to become master, the data
+would diverge in a way that cannot be automatically resolved since the data is a
+filesystem.
+
+Fencing is how the stale system can tell if it is safe to start: when a system
+is running all by itself, it must create a "fence" that stops the other
+system from becoming master.  This fence must be somewhere that both systems can
+access even if the other system is down.
 
 Install a script to manage fencing.  This can be implemented in many ways. The key
 thing is to use **external** storage that is highly reliable.  External means: not
