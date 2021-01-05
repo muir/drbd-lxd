@@ -1,11 +1,11 @@
 
-!!! AS OF Feb 3, 2020: IN-PROGRESS-DOCUEMENT, NOT YET READY !!!
+!!! AS OF Jan 4, 2021: NEARING COMPLETION, PROBABLY WORKS !!!
 
 # HA setup with LXD + DRBD with real static IP addresses for the containers
 
 This is a recipe for a two-node shared-nothing high-availablity container server with
 static IPs.  The containers will look like real hosts.  Anything you run in the
-containers becomes highly available without any customization.  This does not 
+containers becomes highly available without any customization.  This does not
 include a load balancer: the availablity is achieved with failover rather than
 redundancy.
 
@@ -16,7 +16,7 @@ systems but for more than a few, other setups are reccomended.
 
 ### Ubuntu 20.04
 
-There are really basic choices for your host OS.  Do you use a standard 
+There are really basic choices for your host OS.  Do you use a standard
 distribution or do you use a specialized container distribution?  My goal
 here is a choice that will remain valid for the next 15 years.  Since
 I was previously burned by openvz on Debian, I'm shying away from specialty
@@ -26,7 +26,7 @@ Of the mainstream distributions, I have a personal preference for Ubuntu.
 I'm pretty sure it will be around for a while.
 
 The hosts are meant to be low maintenance so an Ubuntu LTS release fits the
-bill. 
+bill.
 
 LXD support in Ubuntu 20.04 is only as a snap.  We'll have to install LXD
 completely by hand.
@@ -66,11 +66,11 @@ were not useful for developing this recipe.
 
 ### DRBD
 
-There aren't a lot of choices for a shared-nothing HA setup.  
+There aren't a lot of choices for a shared-nothing HA setup.
 [DRBD](https://help.ubuntu.com/lts/serverguide/drbd.html) provides over-the-network
 mirroring of raw devices.  It can be used as the block device for most filesytems.
 
-Alternatively, there are a few distributed filesystems: 
+Alternatively, there are a few distributed filesystems:
 - [BeeGFS](https://www.beegfs.io/content/) - free but not open source;
 - [Ceph](https://docs.ceph.com/docs/mimic/) - [requires an odd number of monitor nodes](https://technologyadvice.com/blog/information-technology/ceph-vs-gluster/);
 - [Gluster](https://www.gluster.org/) - "Step 1 – Have at least three nodes";
@@ -91,7 +91,7 @@ out-of-date).
 
 The biggest danger of running DRBD is getting into a split-brain situation. This can
 happen if only one system is up and then it is brought down and then the other system
-is up.  
+is up.
 
 ### Container storage
 
@@ -114,12 +114,12 @@ There are a couple of alternatives:
 - [VRRP (keepalived)](https://www.keepalived.org/);
 - [Heartbeat/Pacemaker](http://linux-ha.org/wiki/Pacemaker).
 
-Heartbeat is quite complicated.  
+Heartbeat is quite complicated.
 Carp (`ucarp`) is simple.  The issue I have with it is that it switches too easily.
 keepalived looks moderately complicated but isn't well targeted to this applciation.
 
 In general, these daemons try to provide very fast failover.  That's not what's needed
-for this. Failover when you have to mount filesystems and restart a bunch of containers 
+for this. Failover when you have to mount filesystems and restart a bunch of containers
 is somewhat expensive so we don't want a daemon that reacts instantly.
 
 Instead, we can use use [drbd-watcher](https://github.com/muir/drbd-watcher) to invoke
@@ -136,7 +136,7 @@ interface aliases and is thus not suitable for anything custom.
 
 ```bash
 sudo apt install ifupdown net-tools
-echo 'network: {config: disabled}' | sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg 
+echo 'network: {config: disabled}' | sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
 ```
 
 This is the `/etc/network/interfaces` file on my test box:
@@ -181,11 +181,11 @@ Note: This same thing may be needed inside containers
 You won't be booting off a DRBD partition (it may be possible but that's
 not what this recipe is about).
 
-use cfdisk (or whatever partition tool you prefer) to create partitions 
-on the disk to be used for drbd.  
+use cfdisk (or whatever partition tool you prefer) to create partitions
+on the disk to be used for drbd.
 one 128MB * number-of-data-partitions partition for the meta-data.
 the rest of the disk for data.
-The number of data partitions should probably be one or two. 
+The number of data partitions should probably be one or two.
 
 ### Set up DRBD
 
@@ -245,7 +245,7 @@ sudo apt install acl autoconf dnsmasq-base git golang \
 	squashfs-tools tar tcl xz-utils ebtables \
 	libapparmor-dev libseccomp-dev libcap-dev \
 	lvm2 thin-provisioning-tools btrfs-progs \
-	curl gettext jq sqlite3 libsqlite3-dev uuid-runtime bzr socat 
+	curl gettext jq sqlite3 libsqlite3-dev uuid-runtime bzr socat
 ```
 
 ### Pick a release
@@ -272,7 +272,7 @@ cd lxc-$LXC_VERSION
 
 ### Build LXD
 
-The 
+The
 [build instructions](https://github.com/lxc/lxd) on the official site
 don't work.  Try these instead.
 
@@ -351,8 +351,8 @@ fs=r0
 cat << END | sudo tee /etc/systemd/system/"$fs"lxd.service
 [Unit]
 Description=${fs} LXD - main daemon
-After=network-online.target openvswitch-switch.service lxcfs.service 
-Requires=network-online.target lxcfs.service 
+After=network-online.target openvswitch-switch.service lxcfs.service
+Requires=network-online.target lxcfs.service
 Documentation=man:lxd(1)
 
 [Service]
@@ -383,17 +383,17 @@ Do not create a new local network bridge
 
 ```bash
 $fs lxd init
-Would you like to use LXD clustering? (yes/no) [default=no]: 
-Do you want to configure a new storage pool? (yes/no) [default=yes]: 
+Would you like to use LXD clustering? (yes/no) [default=no]:
+Do you want to configure a new storage pool? (yes/no) [default=yes]:
 Name of the new storage pool [default=default]: r0
-Name of the storage backend to use (btrfs, dir, lvm) [default=btrfs]: 
-Would you like to create a new btrfs subvolume under /r0/lxd? (yes/no) [default=yes]: 
-Would you like to connect to a MAAS server? (yes/no) [default=no]: 
+Name of the storage backend to use (btrfs, dir, lvm) [default=btrfs]:
+Would you like to create a new btrfs subvolume under /r0/lxd? (yes/no) [default=yes]:
+Would you like to connect to a MAAS server? (yes/no) [default=no]:
 Would you like to create a new local network bridge? (yes/no) [default=yes]: no
 Would you like to configure LXD to use an existing bridge or host interface? (yes/no) [default=no]: yes
 Name of the existing bridge or host interface: enp0s8
-Would you like LXD to be available over the network? (yes/no) [default=no]:  
-Would you like stale cached images to be updated automatically? (yes/no) [default=yes] 
+Would you like LXD to be available over the network? (yes/no) [default=no]:
+Would you like stale cached images to be updated automatically? (yes/no) [default=yes]
 Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]: yes
 ```
 
@@ -433,7 +433,7 @@ Install the script:
 
 ```bash
 curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
-sudo chmod +x /usr/local/bin/drbd-fence 
+sudo chmod +x /usr/local/bin/drbd-fence
 ```
 
 #### Reaction script
@@ -473,7 +473,13 @@ systemctl start drbd-watcher
 We'll need a container for the next bit of setup, so either create a fresh
 one or convert one from a prior setup
 
-### Create a container 
+### Create a container
+
+#### distrobuilder
+
+If you don't trust pre-built images made by strangers, you can use
+a Go program made by strangers, [distrobuilder](https://github.com/lxc/distrobuilder)
+to build your container images.
 
 ### Convert an OpenVZ container
 
@@ -535,8 +541,18 @@ Then restart:
 $fs lxc start c1
 ```
 
+### What else is needed?
 
-## Bonding ethernets for reliability and capacity
+Other things that are needed to really complete the setup are:
+
+- backups
+- synchronization script between the two hosts
+- monitoring/paging to let you know if something is down
+- remote recovery (see pxeboot section below)
+
+## Extras
+
+### Bonding ethernets for reliability and capacity
 
 Typically in a DRBD setup, there will be a private cross-over cable
 between the two hosts.  There is also likely a regular ethernet with
@@ -573,8 +589,6 @@ some security is order.  In the DRBD config, set
   }
 ```
 
-## Extras
-
 ### CARP
 
 While we don't need an additional high-availability solution for DRBD/LXD
@@ -586,7 +600,7 @@ to put it inside a container.
 apt install ucarp
 ```
 
-### PXE boot 
+### PXE boot
 
 PXE boot so that if one system goes down, you can use the other one to
 help fix it.  There are many ways to do this.  The easiest is to use
@@ -613,9 +627,10 @@ Build a /tftpboot
 #### Base /tftpboot
 
 ```bash
-sudo apt install pxelinux
+sudo apt install pxelinux syslinux-common
 sudo cp /usr/lib/PXELINUX/pxelinux.0 /tftpboot/
 sudo mkdir -p /tftpboot/pxelinux.cfg /tftpboot/menus
+sudo cp /usr/lib/syslinux/modules/bios/ldlinux.c32 /tftpboot
 
 sudo tee /tftpboot/pxelinux.cfg/default <<END
 DEFAULT	disk
@@ -653,14 +668,13 @@ sudo tee -a /tftpboot/pxelinux.cfg/default <<END
 
 LABEL	ubuntu${VERSION}
 	KERNEL ubuntu${VERSION}/vmlinuz
-	INITRD ubuntu${VERSION}0/initrd
-	APPEND root=/dev/ram0 ramdisk_size=1500000 ip=dhcp url=http://${MY_IP}:70/ubuntu20/ubuntu-${VERSION}-live-server-amd64.iso
+	INITRD ubuntu${VERSION}/initrd
+	APPEND root=/dev/ram0 ramdisk_size=1500000 ip=dhcp url=http://${MY_IP}:70/ubuntu${VERSION}/ubuntu-${VERSION}-live-server-amd64.iso
 END
 
 sudo tee -a /tftpboot/menus/bootmsg.DISPLAY.default <<END
 ubuntu${VERSION}   boot ubuntu live cd
 END
-
 
 sudo chmod -R a+r /tftpboot
 
@@ -669,24 +683,11 @@ sudo chmod -R a+r /tftpboot
 You also need to [configure your DHCP server](https://help.ubuntu.com/community/DisklessUbuntuHowto).
 Note: follow the instructions there just for DHCP setup.  You won't need NFS.
 
-
-### obvious tools that 
-
-Ubuntu 20.04 makes /etc/rc.local a pain. 
-[here's how](https://linuxmedium.com/how-to-enable-etc-rc-local-with-systemd-on-ubuntu-20-04/)
-
-
-### distrobuilder
-
-If you don't trust pre-built images made by strangers, you can use
-a Go program made by strangers, [distrobuilder](https://github.com/lxc/distrobuilder)
-to build your container images.
-
-## Other resources
+## Other recipes
 
 [Here](https://www.thomas-krenn.com/en/wiki/HA_Cluster_with_Linux_Containers_based_on_Heartbeat,_Pacemaker,_DRBD_and_LXC)
 is a similar recipe.  The main difference is that it uses a java-based
-graphical user interface to control things.  That's not my cup of tea.
+graphical user interface to control things.
 
 [Here](https://petrovs.info/2014/11/28/ha-cluster-with-linux-containers/) is a recipe that uses LXC,
 DRBD, and btrfs.  This receipe doesn't include how to do failover.
