@@ -468,6 +468,12 @@ END
 systemctl start drbd-watcher
 ```
 
+## Using LXD
+
+We'll need a container for the next bit of setup, so either create a fresh
+one or convert one from a prior setup
+
+### Create a container 
 
 ### Convert an OpenVZ container
 
@@ -529,12 +535,6 @@ Then restart:
 $fs lxc start c1
 ```
 
-## CARP
-
-```bash
-apt install ucarp
-```
-
 
 ## Bonding ethernets for reliability and capacity
 
@@ -575,6 +575,17 @@ some security is order.  In the DRBD config, set
 
 ## Extras
 
+### CARP
+
+While we don't need an additional high-availability solution for DRBD/LXD
+setup, there are other services that might need a solution.  For example,
+it's probably better to run OpenVPN on the main servers rather than trying
+to put it inside a container.
+
+```bash
+apt install ucarp
+```
+
 ### PXE boot 
 
 PXE boot so that if one system goes down, you can use the other one to
@@ -583,7 +594,7 @@ tftp to serve a pxelinux that boots using a ramdisk loaded over http.
 
 
 ```bash
-apt install atftpd openbsd-inetd micro-httpd
+sudo apt install atftpd openbsd-inetd micro-httpd isc-dhcp-server
 ```
 
 Turn off serving on port 80.  Why does anything think that installing an unconfigured
@@ -591,23 +602,73 @@ web server is a good idea?
 Since nobody uses gopher anymore, that's a fine port for serving /tftpboot files
 
 ```bash
-perl -p -i 's/^(www\s)/#$1/' /etc/inetd.conf
-perl -p -i '/^tftp\s/ && print "gopher	stream	tcp	nowait	nobody	/usr/sbin/tcpd /usr/sbin/micro-httpd /tftpboot\n"' /etc/inetd.conf
-service openbsd-inetd restart
+sudo perl -p -i -e 's/^(www\s)/#$1/' /etc/inetd.conf
+sudo perl -p -i -e 'm/^tftp/ && s,\s/srv/tftp$, /tftpboot,' /etc/inetd.conf
+sudo perl -p -i -e '/^tftp\s/ && print "gopher	stream	tcp	nowait	nobody	/usr/sbin/tcpd /usr/sbin/micro-httpd /tftpboot\n"' /etc/inetd.conf
+sudo service openbsd-inetd restart
 ```
 
 Build a /tftpboot
 
-```bash
-VERSION=20.04
-wget http://old-releases.ubuntu.com/releases/$VERSION/ubuntu-$VERSION-live-server-amd64.iso
-mkdir -p /tftpboot/ubuntu$VERSION
-mv ubuntu-$VERSION-live-server-amd64.iso /tftpboot/ubuntu$VERSION
-mount /tftpboot/ubuntu$VERSION/ubuntu-$VERSION-live-server-amd64.iso /mnt
-cp /mnt/casper/vmlinuz /mnt/casper/initrd /mnt/ubuntu$VERSION
+#### Base /tftpboot
 
+```bash
+sudo apt install pxelinux
+sudo cp /usr/lib/PXELINUX/pxelinux.0 /tftpboot/
+sudo mkdir -p /tftpboot/pxelinux.cfg /tftpboot/menus
+
+sudo tee /tftpboot/pxelinux.cfg/default <<END
+DEFAULT	disk
+PROMPT	1
+SERIAL	0 9600 0x003
+TIMEOUT	200
+DISPLAY	menus/bootmsg.DISPLAY.default
+
+LABEL	disk
+	LOCALBOOT	0
+END
+
+sudo tee /tftpboot/menus/bootmsg.DISPLAY.default <<END
+	boot choices
+
+disk		boot from local disk (DEFAULT)
+END
+
+sudo chmod -R a+r /tftpboot
+
+#### Add an ubuntu live CD
+
+VERSION=20.04.1
+wget http://old-releases.ubuntu.com/releases/$VERSION/ubuntu-$VERSION-live-server-amd64.iso
+sudo mkdir -p /tftpboot/ubuntu$VERSION
+sudo cp ubuntu-$VERSION-live-server-amd64.iso /tftpboot/ubuntu$VERSION
+sudo mount /tftpboot/ubuntu$VERSION/ubuntu-$VERSION-live-server-amd64.iso /mnt
+sudo cp /mnt/casper/vmlinuz /mnt/casper/initrd /tftpboot/ubuntu$VERSION
+sudo umount /mnt
+
+MY_IP=`ip route get 8.8.8.8 | sed -n '/src/{s/.*src *\([^ ]*\).*/\1/p;q}'`
+echo my ip address is $MY_IP
+
+sudo tee -a /tftpboot/pxelinux.cfg/default <<END
+
+LABEL	ubuntu${VERSION}
+	KERNEL ubuntu${VERSION}/vmlinuz
+	INITRD ubuntu${VERSION}0/initrd
+	APPEND root=/dev/ram0 ramdisk_size=1500000 ip=dhcp url=http://${MY_IP}:70/ubuntu20/ubuntu-${VERSION}-live-server-amd64.iso
+END
+
+sudo tee -a /tftpboot/menus/bootmsg.DISPLAY.default <<END
+ubuntu${VERSION}   boot ubuntu live cd
+END
+
+
+sudo chmod -R a+r /tftpboot
 
 ```
+
+You also need to [configure your DHCP server](https://help.ubuntu.com/community/DisklessUbuntuHowto).
+Note: follow the instructions there just for DHCP setup.  You won't need NFS.
+
 
 ### obvious tools that 
 
