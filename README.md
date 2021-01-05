@@ -81,7 +81,7 @@ None of those are performant, open source, and support a two-node configuration.
 I used DRBD in my previous setup and while it's a bit complicated to set up,
 it proved itself to be quite reliable.  And quick.
 
-[DRBD configuration](https://github.com/LINBIT/drbd-8.0/blob/master/scripts/drbd.conf)
+[DRBD configuration](https://github.com/LINBIT/drbd-8.0/blob/main/scripts/drbd.conf)
 has lots of options.
 
 Missing DRBD feature: call a script every time the status changes, passing in
@@ -327,7 +327,7 @@ for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename
 
 ```bash
 DEST=/usr/local/lxd
-curl -s https://raw.githubusercontent.com/muir/drbd-lxc/master/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
+curl -s https://raw.githubusercontent.com/muir/drbd-lxc/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
 sudo chmod +x $DEST/lxdwrapper.sh
 ```
 
@@ -335,7 +335,7 @@ If you have more than one DRBD partition, do this multiple times...
 
 ```bash
 fs=r0
-curl -s https://raw.githubusercontent.com/muir/drbd-lxc/master/fswrapper.sh | sudo tee /usr/local/bin/$fs
+curl -s https://raw.githubusercontent.com/muir/drbd-lxc/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
 sudo chmod +x /usr/local/bin/$fs
 ```
 
@@ -432,7 +432,7 @@ Install [gsutil & gcloud](https://cloud.google.com/storage/docs/gsutil_install#d
 Install the script:
 
 ```bash
-curl -s https://raw.githubusercontent.com/muir/drbd-lxc/master/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
 sudo chmod +x /usr/local/bin/drbd-fence 
 ```
 
@@ -443,7 +443,7 @@ is having some kind of fencing so that if you have only one node up and then bri
 down and then bring up the other node.
 
 ```bash
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/drbd-react.sh | sudo tee /usr/local/bin/drbd-react
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-react.sh | sudo tee /usr/local/bin/drbd-react
 sudo chmod +x $DEST/usr/local/bin/drbd-react
 ```
 
