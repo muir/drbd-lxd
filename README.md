@@ -182,7 +182,7 @@ Note: This same thing may be needed inside containers.
 You won't be booting off a DRBD partition (it may be possible but that's
 not what this recipe is about).
 
-use cfdisk (or whatever partition tool you prefer) to create partitions
+use `cfdisk` (or whatever partition tool you prefer) to create partitions
 on the disk to be used for drbd.
 one 128MB * number-of-data-partitions partition for the meta-data.
 the rest of the disk for data.
@@ -450,7 +450,7 @@ pair of systems, this can be just the resource identifier (eg `"r0"`)
 and `$HOST` is the local hostname.  Status can be returned by the exit
 code: 0 for success, 1 for failure.
 
-__This__ fencing script uses google cloud storage.  If you don't like that, pick
+__This__ fencing script uses Google cloud storage.  If you don't like that, pick
 a different external storage system and write a trivial script to access it.
 
 Install [gsutil & gcloud](https://cloud.google.com/storage/docs/gsutil_install#deb)
@@ -501,7 +501,12 @@ one or convert one from a prior setup
 
 ### Create a container
 
-#### distrobuilder
+Confusingly, the LXD client is called `lxc`.  Yeah, that's the same name as the
+underlying container system that LXD is built on top of.  And yes, the LXC has
+a command line too.o
+
+In any case, there are
+[instruction here](https://linuxcontainers.org/lxd/getting-started-cli/#lxd-client)
 
 If you don't trust pre-built images made by strangers, you can use
 a Go program made by strangers, [distrobuilder](https://github.com/lxc/distrobuilder)
