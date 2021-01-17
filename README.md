@@ -108,6 +108,15 @@ uses btrfs with DRBD and doesn't think it's a terrible idea.
 
 This recipe uses `btrfs`.
 
+For LXD to use btrfs, it needs to be given a raw device to make the filesystem.  It won't
+use a directory of an existing filesystem.  That's a challenge because we want to have both
+the LXD metadata and the container storage on the same DRBD resource.  To do that, we have
+to partition the resource.  That isn't natively supported so we'll have to use something
+else to do it: LVM.
+
+Setting up LVM on top of DRBD is another challenge because LVM will see the DRBD partition
+and it will see the underlying partition and they can conflict.
+
 ### Scripts for failover
 
 There are a couple of alternatives:
@@ -198,6 +207,44 @@ Suggestions:
 - Use /dev/disk/by-partuuid/xxxxx to reference partition so that if you ever have a disk missing at boot you don't try to overly the wrong disk
 - Put the resource specific configs in `/etc/drbd.d/r[0-9].res`
 
+### Set up LVM
+
+LVM needs to be prevented from seeing the raw partition that DRBD is using.
+To do that, we edit `/etc/lvm/lvm.conf`.  To make this work, LVM has to be
+prevented from seeing partitions that are equivelent to the drbd partition.
+To do we have to make the default device filter reject all devices and then
+add back the ones that we want.
+
+In the devices section, add: 
+
+```
+filter = [ "a|^/dev/drbd|", "a|^/dev/disk/by-uuid/78898354-38d0-429c-a441-66f00e5bcb9a$|", "r|.*|" ]
+```
+
+The `"a|^/dev/disk/by-uuid/78898354-38d0-429c-a441-66f00e5bcb9a$|"` clause is what is needed
+to still use a disk other than DRDB with LVM.   Add ones like that for all the non-DRBD devices
+if you care.  Or don't bother if you're not making any other use of LVM.
+
+Then run:
+
+```bash
+fs=r0
+drbd=0
+
+vgscan
+lvmdiskscan
+pvcreate /dev/drbd${drbd}
+pvs
+vgcreate ${fs} /dev/drbd${drbd}
+vgdisplay ${fs}
+lvcreate -n ${fs}lxd -L 30G ${fs}
+lvcreate -n ${fs}containers -l 100%FREE ${fs}
+lvs
+mkfs.btrfs /dev/${fs}/${fs}lxd
+```
+
+This will have to be repeated for each DRBD resource
+
 ### Mount filesystems
 
 If you have more than one DRBD partition, do this multiple times...
@@ -207,7 +254,7 @@ fs=r0
 drbd=0
 
 mkdir /$fs
-echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | tee -a /etc/fstab
+echo "/dev/r{$fs}/r{$fs}lxd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | tee -a /etc/fstab
 mount /$fs
 ```
 
@@ -362,6 +409,7 @@ cat << END | sudo tee /etc/systemd/system/"$fs"lxd.service
 Description=${fs} LXD - main daemon
 After=network-online.target openvswitch-switch.service lxcfs.service
 Requires=network-online.target lxcfs.service
+ConditionPathExists=/${fs}/lxd
 Documentation=man:lxd(1)
 
 [Service]
@@ -379,6 +427,7 @@ LimitNPROC=infinity
 TasksMax=infinity
 END
 
+mkdir /$fs/lxd
 systemctl start "$fs"lxd
 ```
 
@@ -405,6 +454,19 @@ Would you like LXD to be available over the network? (yes/no) [default=no]:
 Would you like stale cached images to be updated automatically? (yes/no) [default=yes]
 Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]: yes
 ```
+
+If this fails with the message
+
+Then try re-running init and don't configure a storage pool.
+
+Then remove the empty directory (check first) /r0/lxd/storage-pools/r0
+
+Then create the storage pool manually:
+
+```bash
+r0 lxc storage create r0 btrfs
+```
+
 
 ### DRBD watcher script
 
