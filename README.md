@@ -108,15 +108,6 @@ uses btrfs with DRBD and doesn't think it's a terrible idea.
 
 This recipe uses `btrfs`.
 
-For LXD to use btrfs, it needs to be given a raw device to make the filesystem.  It won't
-use a directory of an existing filesystem.  That's a challenge because we want to have both
-the LXD metadata and the container storage on the same DRBD resource.  To do that, we have
-to partition the resource.  That isn't natively supported so we'll have to use something
-else to do it: LVM.
-
-Setting up LVM on top of DRBD is another challenge because LVM will see the DRBD partition
-and it will see the underlying partition and they can conflict.
-
 ### Scripts for failover
 
 There are a couple of alternatives:
@@ -207,54 +198,16 @@ Suggestions:
 - Use /dev/disk/by-partuuid/xxxxx to reference partition so that if you ever have a disk missing at boot you don't try to overly the wrong disk
 - Put the resource specific configs in `/etc/drbd.d/r[0-9].res`
 
-### Set up LVM
-
-LVM needs to be prevented from seeing the raw partition that DRBD is using.
-To do that, we edit `/etc/lvm/lvm.conf`.  To make this work, LVM has to be
-prevented from seeing partitions that are equivelent to the drbd partition.
-To do we have to make the default device filter reject all devices and then
-add back the ones that we want.
-
-In the devices section, add: 
-
-```
-filter = [ "a|^/dev/drbd|", "a|^/dev/disk/by-uuid/78898354-38d0-429c-a441-66f00e5bcb9a$|", "r|.*|" ]
-```
-
-The `"a|^/dev/disk/by-uuid/78898354-38d0-429c-a441-66f00e5bcb9a$|"` clause is what is needed
-to still use a disk other than DRDB with LVM.   Add ones like that for all the non-DRBD devices
-if you care.  Or don't bother if you're not making any other use of LVM.
-
-Then run:
-
-```bash
-fs=r0
-drbd=0
-
-vgscan
-lvmdiskscan
-pvcreate /dev/drbd${drbd}
-pvs
-vgcreate ${fs} /dev/drbd${drbd}
-vgdisplay ${fs}
-lvcreate -n ${fs}lxd -L 30G ${fs}
-lvcreate -n ${fs}containers -l 100%FREE ${fs}
-lvs
-mkfs.btrfs /dev/${fs}/${fs}lxd
-```
-
-This will have to be repeated for each DRBD resource
-
 ### Mount filesystems
 
 If you have more than one DRBD partition, do this multiple times...
 
 ```bash
-fs=r0
 drbd=0
+fs=r$drbd
 
 mkdir /$fs
-echo "/dev/r{$fs}/r{$fs}lxd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | tee -a /etc/fstab
+echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | tee -a /etc/fstab
 mount /$fs
 ```
 
@@ -312,7 +265,7 @@ Building LXC is easy. It's necessary to do it first so that LXD links against
 a LXC library that knows about `routed` nictypes.
 
 ```bash
-LXC_VERSION=4.0.5
+LXC_VERSION=4.0.6
 mkdir -p $HOME/LXC
 cd $HOME/LXC
 wget https://linuxcontainers.org/downloads/lxc/lxc-$LXC_VERSION.tar.gz
@@ -328,7 +281,7 @@ The
 don't work.  Try these instead.
 
 ```bash
-LXD_VERSION=4.9
+LXD_VERSION=4.10
 mkdir -p $HOME/LXD
 cd $HOME/LXD
 wget https://linuxcontainers.org/downloads/lxd/lxd-$LXD_VERSION.tar.gz
@@ -374,7 +327,7 @@ done
 for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename $i`; done
 ```
 
-### Install scripts
+### Install wrapper scripts
 
 The first is a wrapper around LXD that sets LD_LIBRARY_PATH
 
@@ -442,31 +395,22 @@ Do not create a new local network bridge
 ```bash
 $fs lxd init
 Would you like to use LXD clustering? (yes/no) [default=no]:
-Do you want to configure a new storage pool? (yes/no) [default=yes]:
-Name of the new storage pool [default=default]: r0
-Name of the storage backend to use (btrfs, dir, lvm) [default=btrfs]:
-Would you like to create a new btrfs subvolume under /r0/lxd? (yes/no) [default=yes]:
+Do you want to configure a new storage pool? (yes/no) [default=yes]: no
 Would you like to connect to a MAAS server? (yes/no) [default=no]:
 Would you like to create a new local network bridge? (yes/no) [default=yes]: no
 Would you like to configure LXD to use an existing bridge or host interface? (yes/no) [default=no]: yes
-Name of the existing bridge or host interface: enp0s8
+Name of the existing bridge or host interface: enp0s3
 Would you like LXD to be available over the network? (yes/no) [default=no]:
 Would you like stale cached images to be updated automatically? (yes/no) [default=yes]
 Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]: yes
 ```
 
-If this fails with the message
-
-Then try re-running init and don't configure a storage pool.
-
-Then remove the empty directory (check first) /r0/lxd/storage-pools/r0
-
 Then create the storage pool manually:
 
 ```bash
-r0 lxc storage create r0 btrfs
+btrfs subvolume create /${fs}/pools
+$fs lxc storage create ${fs} btrfs source=/${fs}/pools
 ```
-
 
 ### DRBD watcher script
 

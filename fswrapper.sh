@@ -1,7 +1,7 @@
 #!/bin/bash 
 
 fs=/`basename $0`
-dir=`dirname $0`
+bin=`dirname $0`
 cmd="$1"
 
 export F="$fs"
@@ -16,23 +16,22 @@ shift 1
 case "$cmd" in
 	lxc|lxd)
 		export LXD_DIR="$fs/lxd"
-		exec $dir/$cmd "$@"
+		exec $bin/$cmd "$@"
 		;;
 	start)
 		drbdadm primary $resource
-		vgimport -a
-		lvchange -ay /dev/$resource
 		mount "/$fs" && systemctl start "$fs"lxd
+		mount "/$fs/pools" && systemctl start "$fs"lxd
 		;;
 	stop)
 		export LXD_DIR="$fs/lxd"
-		$dir/lxc stop --all
-		$dir/lxc stop -f --all
+		$bin/lxc stop --all
+		$bin/lxc stop -f --all
 		systemctl stop "$fs"lxd 
+		fuser -k -m "/$fs/pools"
+		unmount "/$fs/pools"
 		fuser -k -m "/$fs"
 		unmount "/$fs"
-		lvchange -an /dev/$resource
-		vgexport -a
 		drbdadm secondary $resource
 		# kill -USR1 `cat /proc/pid....`
 		;;
