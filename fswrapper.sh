@@ -5,7 +5,7 @@ bin=`dirname $0`
 cmd="$1"
 
 export F="$fs"
-resource=`perl -n -e 'm,^/dev/r(\d+)/r\1lxd\s+\Q$ENV{F}\E\s, && print "r$1\n"' /etc/fstab`
+resource=`perl -n -e 'm,^/dev/drbd(\d+)\s+\Q$ENV{F}\E\s, && print "r$1\n"' /etc/fstab`
 if ! [[ "$resource" =~ ^r[0-9]+$ ]]; then
        	echo "could not determine drbd resource name" 
 	exit 1 
