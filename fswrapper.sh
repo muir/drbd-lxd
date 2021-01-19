@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 
 fs=`basename $0`
 bin=`dirname $0`
@@ -7,12 +7,12 @@ cmd="$1"
 export F="/$fs"
 resource=`perl -n -e 'm,^/dev/drbd(\d+)\s+\Q$ENV{F}\E\s, && print "r$1\n"' /etc/fstab`
 if ! [[ "$resource" =~ ^r[0-9]+$ ]]; then
-       	echo "could not determine drbd resource name" 
-	exit 1 
+       	echo "could not determine drbd resource name"
+	exit 1
 fi
 unset F
 
-shift 1 
+shift 1
 case "$cmd" in
 	lxc|lxd)
 		export LXD_DIR="/$fs/lxd"
@@ -21,17 +21,17 @@ case "$cmd" in
 	start)
 		set -e
 		drbdadm primary $resource
-		mount "/$fs" 
-		mount "/$fs/pools" 
+		mount "/$fs"
+		mount "/$fs/pools"
 		sleep 1
 		systemctl start "$fs"lxd
 		;;
 	stop)
-		set -e
+		set -x
 		export LXD_DIR="/$fs/lxd"
 		$bin/lxc stop --all
 		$bin/lxc stop -f --all
-		systemctl stop "$fs"lxd 
+		systemctl stop "$fs"lxd
 		fuser -k -m "/$fs/pools"
 		umount "/$fs/pools"
 		fuser -k -m "/$fs/lxd/storage-pools/r0"

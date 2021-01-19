@@ -19,9 +19,7 @@ systems but for more than a few, other setups are reccomended.
 
 There are really basic choices for your host OS.  Do you use a standard
 distribution or do you use a specialized container distribution?  My goal
-here is a choice that will remain valid for the next 15 years.  Since
-I was previously burned by openvz on Debian, I'm shying away from specialty
-distributions.
+here is a choice that will remain valid for the next 15 years.
 
 Of the mainstream distributions, I have a personal preference for Ubuntu.
 I'm pretty sure it will be around for a while.
@@ -30,7 +28,8 @@ The hosts are meant to be low maintenance so an Ubuntu LTS release fits the
 bill.
 
 LXD support in Ubuntu 20.04 is only as a snap.  We'll have to install LXD
-completely by hand.
+completely by hand because the snap-based LXD does not honor overriding 
+the LXD_DIR environment variable.
 
 ### LXD instead of LXC
 
@@ -92,7 +91,7 @@ out-of-date).
 
 The biggest danger of running DRBD is getting into a split-brain situation. This can
 happen if only one system is up and then it is brought down and then the other system
-is up.
+is brought up.
 
 ### Container storage
 
@@ -184,7 +183,7 @@ not what this recipe is about).
 
 use `cfdisk` (or whatever partition tool you prefer) to create partitions
 on the disk to be used for drbd.
-one 128MB * number-of-data-partitions partition for the meta-data.
+one 128MB times number-of-data-partitions partition for the meta-data.
 the rest of the disk for data.
 The number of data partitions should probably be one or two.
 
@@ -229,12 +228,7 @@ a couple of possible hacky solutions:
 In LXD 3.18, there is a new `nictype` supported: `routed` that does exactly
 what's wanted.
 
-Installing LXD with [snap](https://snapcraft.io/) is not
-compatible with setting a override `LXD_DIR` as required for running on top
-of ephemeral (DRBD) filesystems.  Even extracting the binaries from a snap
-doesn't work as they don't honor the `PATH` environment variable.
-
-Since we're installing LXD manually, we can use the latest version.  
+Since we're installing LXD manually anyway, we can use the latest version.  
 Note: Ubuntu 18.04 includes lxd as a regular package, but the version is too
 old to support routed networking.
 
@@ -324,7 +318,6 @@ for i in *; do
 		sudo cp -r $i/.libs/* $DEST/lib/$i
 	fi
 done
-for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename $i`; done
 ```
 
 ### Install wrapper scripts
@@ -335,9 +328,10 @@ The first is a wrapper around LXD that sets LD_LIBRARY_PATH
 DEST=/usr/local/lxd
 curl -s https://raw.githubusercontent.com/muir/drbd-lxc/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
 sudo chmod +x $DEST/lxdwrapper.sh
+for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename $i`; done
 ```
 
-The second switches betwen multiple LXD installations since you need a separate LXD
+The second switches betwen multiple LXD installations since you need separate LXD metadata
 for each drbd partition.
 
 If you have more than one DRBD partition, do this multiple times...
@@ -350,7 +344,7 @@ sudo chmod +x /usr/local/bin/$fs
 
 ## Set up LXD
 
-The following is loosely derived from the system files that are part of the Ubuntu 18.04 lxd package.  Do this
+The following is loosely derived from the systemd files that are part of the Ubuntu 18.04 lxd package.  Do this
 for each drbd filesytem.
 
 ```bash
@@ -386,11 +380,11 @@ systemctl start "$fs"lxd
 
 ### Initialize LXD
 
-Override defaults for storage pool name.
+Override defaults for storage pools: do not create one.
 Override defaults for networks.  If you let lxd "use" a network then
 it will want to manage it with DHCP and NAT.  For people who want to
 manage their own network with static IPs this is a bad thing.
-Do not create a new local network bridge
+Do not create a new local network bridge.
 
 ```bash
 $fs lxd init
@@ -409,6 +403,7 @@ Then create the storage pool manually:
 
 ```bash
 btrfs subvolume create /${fs}/pools
+echo "/dev/drbd$drbd /$fs/pools btrfs rw,noauto,relatime,space_cache,subvol=/pools,ssd 0 0 " | tee -a /etc/fstab
 $fs lxc storage create ${fs} btrfs source=/${fs}/pools
 ```
 
@@ -452,9 +447,8 @@ Commands should be:
 
 Where `$RESOURCE` should be unique in your lock script and storage and
 tied to your DRBD resource.  For lock storage that is used just by a
-pair of systems, this can be just the resource identifier (eg `"r0"`)
-and `$HOST` is the local hostname.  Status can be returned by the exit
-code: 0 for success, 1 for failure.
+pair of systems, this can be just the resource identifier (eg `"r0"`).
+Status can be returned by the exit code: 0 for success, 1 for failure.
 
 __This__ fencing script uses Google cloud storage.  If you don't like that, pick
 a different external storage system and write a trivial script to access it.
