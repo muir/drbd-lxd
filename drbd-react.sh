@@ -12,7 +12,7 @@ set -e
 
 if [ "$connection" == "Connected" ]; then 
 	if [ "$connection" != "$OLD_CONNECTED_STATE" ]; then
-		echo "$resourse - unfencing"
+		echo "$resource - unfencing"
 		/usr/local/bin/drbd-fence unlock $resource
 	fi
 else

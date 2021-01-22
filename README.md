@@ -503,6 +503,7 @@ RestartSec=300
 WantedBy=default.target
 END
 
+sudo systemctl enable drbd-watcher
 sudo systemctl start drbd-watcher
 sudo systemctl status drbd-watcher
 ```
