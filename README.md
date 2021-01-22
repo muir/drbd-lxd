@@ -326,7 +326,7 @@ The first is a wrapper around LXD that sets LD_LIBRARY_PATH
 
 ```bash
 DEST=/usr/local/lxd
-curl -s https://raw.githubusercontent.com/muir/drbd-lxc/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
 sudo chmod +x $DEST/lxdwrapper.sh
 for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename $i`; done
 ```
@@ -338,7 +338,7 @@ If you have more than one DRBD partition, do this multiple times...
 
 ```bash
 fs=r0
-curl -s https://raw.githubusercontent.com/muir/drbd-lxc/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
 sudo chmod +x /usr/local/bin/$fs
 ```
 
@@ -457,11 +457,21 @@ using a google account for this that is only used for this.
 
 Install [gsutil & gcloud](https://cloud.google.com/storage/docs/gsutil_install#deb)
 
+Run `gcloud init` as root since it will be root that's needing to access the resources.
+
 Install the script:
 
 ```bash
-curl -s https://raw.githubusercontent.com/muir/drbd-lxc/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
 sudo chmod +x /usr/local/bin/drbd-fence
+```
+
+Test it:
+
+```bash
+/usr/local/bin/drbd-fence unlock r0
+/usr/local/bin/drbd-fence lock r0
+/usr/local/bin/drbd-fence unlock r0
 ```
 
 #### Reaction script
@@ -472,7 +482,7 @@ down and then bring up the other node.
 
 ```bash
 curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-react.sh | sudo tee /usr/local/bin/drbd-react
-sudo chmod +x $DEST/usr/local/bin/drbd-react
+sudo chmod +x /usr/local/bin/drbd-react
 ```
 
 #### Run the script on boot and keep it running
@@ -493,7 +503,8 @@ RestartSec=300
 WantedBy=default.target
 END
 
-systemctl start drbd-watcher
+sudo systemctl start drbd-watcher
+sudo systemctl status drbd-watcher
 ```
 
 ## Using LXD

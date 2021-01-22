@@ -44,7 +44,7 @@ if [[ "$self_role" == "Secondary" ]] && [[ "$self_disk" == "UpToDate" ]]; then
 	if [[ "$filesystem" != "" ]]; then
 		echo "$resource - mount $filesystem"
 		mount $filesystem
-	]]
+	fi
 fi
 
 if [[ "$self_role" == "Primary" ]] && [[ "$OLD_SELF_ROLE" != "Primary" ]]; then
@@ -58,7 +58,7 @@ if [[ "$self_role" == "Primary" ]] && [[ "$self_disk" != "UpToDate" ]] && [[ "$r
 	if [[ "$filesystem" != "" ]]; then
 		echo "$resource - unmount $filesystem"
 		umount $filesystem
-	]]
+	fi
 	echo "$resource - demote self, become secondary"
 	drdbadm $resource secondary
 fi
