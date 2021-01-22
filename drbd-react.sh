@@ -40,7 +40,7 @@ if [[ "$self_role" == "Secondary" ]] && [[ "$self_disk" == "UpToDate" ]]; then
 		/usr/local/bin/drbd-fence lock $resource
 	fi
 	echo "$resource - become primary"
-	drdbadm $resource primary
+	drbdadm $resource primary
 	if [[ "$filesystem" != "" ]]; then
 		echo "$resource - mount $filesystem"
 		mount $filesystem
@@ -60,5 +60,5 @@ if [[ "$self_role" == "Primary" ]] && [[ "$self_disk" != "UpToDate" ]] && [[ "$r
 		umount $filesystem
 	fi
 	echo "$resource - demote self, become secondary"
-	drdbadm $resource secondary
+	drbdadm $resource secondary
 fi
