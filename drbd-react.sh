@@ -39,12 +39,8 @@ if [[ "$self_role" == "Secondary" ]] && [[ "$self_disk" == "UpToDate" ]]; then
 		echo "$resource - fencing off discounted peer"
 		/usr/local/bin/drbd-fence lock $resource
 	fi
-	echo "$resource - become primary"
-	drbdadm $resource primary
-	if [[ "$filesystem" != "" ]]; then
-		echo "$resource - mount $filesystem"
-		mount $filesystem
-	fi
+	echo "$resource - become primary and start services"
+	/usr/local/bin/$resource start
 fi
 
 if [[ "$self_role" == "Primary" ]] && [[ "$OLD_SELF_ROLE" != "Primary" ]]; then
@@ -55,10 +51,4 @@ fi
 if [[ "$self_role" == "Primary" ]] && [[ "$self_disk" != "UpToDate" ]] && [[ "$remote_disk" == "UpToDate" ]] && [[ "$connection" == "Connected" ]]; then 
 	echo "$resource - demote self, stopping services"
 	/usr/local/bin/$resource stop
-	if [[ "$filesystem" != "" ]]; then
-		echo "$resource - unmount $filesystem"
-		umount $filesystem
-	fi
-	echo "$resource - demote self, become secondary"
-	drbdadm $resource secondary
 fi
