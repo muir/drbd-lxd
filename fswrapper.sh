@@ -19,7 +19,7 @@ case "$cmd" in
 		exec $bin/$cmd "$@"
 		;;
 	start)
-		set -e
+		set -ex
 		drbdadm primary $resource
 		mount "/$fs"
 		mount "/$fs/pools"

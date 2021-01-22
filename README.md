@@ -1,5 +1,5 @@
 
-!!! AS OF Jan 4, 2021: NEARING COMPLETION, PROBABLY WORKS !!!
+!!! AS OF Jan 20, 2021: NEARING COMPLETION, PROBABLY WORKS !!!
 
 # HA setup with LXD + DRBD with real static IP addresses for the containers
 
@@ -205,9 +205,9 @@ If you have more than one DRBD partition, do this multiple times...
 drbd=0
 fs=r$drbd
 
-mkdir /$fs
-echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | tee -a /etc/fstab
-mount /$fs
+sudo mkdir /$fs
+echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | sudo tee -a /etc/fstab
+sudo mount /$fs
 ```
 
 ### Bridged vs routed vs NAT
@@ -402,9 +402,10 @@ Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]: y
 Then create the storage pool manually:
 
 ```bash
-btrfs subvolume create /${fs}/pools
-echo "/dev/drbd$drbd /$fs/pools btrfs rw,noauto,relatime,space_cache,subvol=/pools,ssd 0 0 " | tee -a /etc/fstab
-$fs lxc storage create ${fs} btrfs source=/${fs}/pools
+drbd=0
+sudo btrfs subvolume create /${fs}/pools
+echo "/dev/drbd$drbd /$fs/pools btrfs rw,noauto,relatime,space_cache,subvol=/pools,ssd 0 0 " | sudo tee -a /etc/fstab
+sudo $fs lxc storage create ${fs} btrfs source=/${fs}/pools
 ```
 
 ### DRBD watcher script
@@ -451,14 +452,15 @@ pair of systems, this can be just the resource identifier (eg `"r0"`).
 Status can be returned by the exit code: 0 for success, 1 for failure.
 
 __This__ fencing script uses Google cloud storage.  If you don't like that, pick
-a different external storage system and write a trivial script to access it.
+a different external storage system and write a trivial script to access it.  I suggest
+using a google account for this that is only used for this.
 
 Install [gsutil & gcloud](https://cloud.google.com/storage/docs/gsutil_install#deb)
 
 Install the script:
 
 ```bash
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
+curl -s https://raw.githubusercontent.com/muir/drbd-lxc/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
 sudo chmod +x /usr/local/bin/drbd-fence
 ```
 
