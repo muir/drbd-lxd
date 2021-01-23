@@ -617,6 +617,26 @@ Then restart:
 $fs lxc start c1
 ```
 
+### Monitoring
+
+The drbd-watcher script installed earlier should take care of most normal failover
+situations.  It doesn't handle absolutely everything and cannot resolve a split-brain
+problem.
+
+The watcher script is relatively slow compared to most HA setups.  Let's pair it with
+something even slower: a script that send emails whenever the DRBD status changes.
+This will run out of crontab.
+
+```bash
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-status-emailer.sh | sudo tee /usr/local/bin/drbd-status-emailer
+sudo chmod +x /usr/local/bin/drbd-status-emailer
+
+( crontab -l; cat <<END | crontab - )
+*/4             *       * * * /usr/local/bin/drbd-status-emailer
+59              0       * * * /usr/local/bin/drbd-status-emailer noisy
+END
+```
+
 ### What else is needed?
 
 Other things that are needed to really complete the setup are:
@@ -624,9 +644,7 @@ Other things that are needed to really complete the setup are:
 - backups
 - synchronization script between the two hosts
 - monitoring/paging to let you know if something is down
-- remote recovery (see pxeboot section below)
-
-## Extras
+- remote recovery (see PXEboot section below)
 
 ### Bonding ethernets for reliability and capacity
 
