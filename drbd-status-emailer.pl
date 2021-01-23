@@ -5,7 +5,8 @@ my $old_problem_file = "/var/run/drbd.problem";
 use strict;
 use warnings;
 use Mail::Sendmail;
-use File::Slurper;
+use File::Slurper 'write_text';
+use File::Slurper 'read_text';
 use Sys::Hostname;
 
 my $noisy = 0;
@@ -18,7 +19,6 @@ my %found;
 my @problem;
 my $copy;
 my $hostname = hostname();
-
 
 my %totallygood;
 my %connected;
@@ -43,6 +43,9 @@ while (<$drbd>) {
 		next;
 	}
 	push(@problem, "r$r not up-to-date");
+}
+if (!%found) {
+	push(@problem, "no resources found")
 }
 
 push(@problem, "no drbd issues, all is good") unless @problem;

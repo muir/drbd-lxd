@@ -632,7 +632,7 @@ sudo apt install libfile-slurper-perl libmail-sendmail-perl
 curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-status-emailer.pl | sudo tee /usr/local/bin/drbd-status-emailer
 sudo chmod +x /usr/local/bin/drbd-status-emailer
 
-(sudo crontab -l; cat <<END) | sudo crontab -
+sudo echo -n; (sudo crontab -l; cat <<END) | sudo crontab -
 */4             *       * * * /usr/local/bin/drbd-status-emailer
 59              0       * * * /usr/local/bin/drbd-status-emailer noisy
 END
@@ -649,7 +649,7 @@ Other things that are needed to really complete the setup are:
 
 ### Bonding ethernets for reliability and capacity
 
-Typically in a DRBD setup, there will be a private cross-over cable
+Often in a DRBD setup, there will be a private cross-over cable
 between the two hosts.  There is also likely a regular ethernet with
 a switch that they're both connected to.
 
@@ -700,7 +700,6 @@ apt install ucarp
 PXE boot so that if one system goes down, you can use the other one to
 help fix it.  There are many ways to do this.  The easiest is to use
 tftp to serve a pxelinux that boots using a ramdisk loaded over http.
-
 
 ```bash
 sudo apt install atftpd openbsd-inetd micro-httpd isc-dhcp-server
