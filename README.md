@@ -441,6 +441,8 @@ Install a script to manage fencing.  This can be implemented in many ways. The k
 thing is to use **external** storage that is highly reliable.  External means: not
 on the systems that need to be fenced from each other.
 
+Fencing only needs to lock the resource when there is a disconnected primary.
+
 Commands should be:
 
 - `lock $RESOURCE`
@@ -473,6 +475,8 @@ Test it:
 /usr/local/bin/drbd-fence lock r0
 /usr/local/bin/drbd-fence unlock r0
 ```
+
+Initialize the fence by unlocking each resource.
 
 #### Reaction script
 

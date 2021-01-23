@@ -7,22 +7,22 @@
 bucket=gs://drbd2
 cmd="$1"
 resource="$2"
+lock="$bucket/${resource}.lock"
 
 case "$cmd" in
 	lock)
-		resource=$2
-		current=`gsutil cp $bucket/resource -`
+		current=`gsutil cp "$lock" -`
 		hostname=`hostname`
 		case "$current" in 
 			UNLOCKED)
 				set -e
-				echo $hostname | gsutil cp - $bucket/resource.lock
+				echo $hostname | gsutil cp - "$lock"
 				# Pause in case of a simultaneous write by our peer.
 				# This pause is not a guarantee but it likely catches
 				# overlapping writes and allows only one system to
 				# proceed.
 				sleep 10 
-				recheck=`gsutil cp $bucket/resource -`
+				recheck=`gsutil cp "$lock" -`
 				if [ "$recheck" == "$hostname" ]; then
 					exit 0
 				else
@@ -44,7 +44,7 @@ case "$cmd" in
 		esac
 		;;
 	unlock)
-		echo "UNLOCKED" | gsutil cp - $bucket/resource.lock
+		echo "UNLOCKED" | gsutil cp - "$lock"
 		;;
 	*)
 		echo "unknown command"
