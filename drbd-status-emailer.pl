@@ -5,7 +5,7 @@ my $old_problem_file = "/var/run/drbd.problem";
 use strict;
 use warnings;
 use Mail::Sendmail;
-use File::Slurp;
+use File::Slurper;
 use Sys::Hostname;
 
 my $noisy = 0;
@@ -47,7 +47,7 @@ while (<$drbd>) {
 
 push(@problem, "no drbd issues, all is good") unless @problem;
 
-my $old_problem = -e $old_problem_file ? read_file($old_problem_file) : '';
+my $old_problem = -e $old_problem_file ? read_text($old_problem_file) : '';
 my $new_problem = join("\n", @problem);
 
 if ($new_problem ne $old_problem || $noisy) {
@@ -60,7 +60,7 @@ if ($new_problem ne $old_problem || $noisy) {
 		Message	=> $body,
 	) or die "could not send: $Mail::Sendmail::error";
 
-	write_file($old_problem_file, $new_problem);
+	write_text($old_problem_file, $new_problem);
 	
 	print "SENDING MESSAGE\n$body" if -t STDOUT;
 } else {

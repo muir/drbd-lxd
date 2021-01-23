@@ -628,10 +628,11 @@ something even slower: a script that send emails whenever the DRBD status change
 This will run out of crontab.
 
 ```bash
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-status-emailer.sh | sudo tee /usr/local/bin/drbd-status-emailer
+sudo apt install libfile-slurper-perl libmail-sendmail-perl
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-status-emailer.pl | sudo tee /usr/local/bin/drbd-status-emailer
 sudo chmod +x /usr/local/bin/drbd-status-emailer
 
-( crontab -l; cat <<END | crontab - )
+(sudo crontab -l; cat <<END) | sudo crontab -
 */4             *       * * * /usr/local/bin/drbd-status-emailer
 59              0       * * * /usr/local/bin/drbd-status-emailer noisy
 END
