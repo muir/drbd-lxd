@@ -197,6 +197,33 @@ Suggestions:
 - Use /dev/disk/by-partuuid/xxxxx to reference partition so that if you ever have a disk missing at boot you don't try to overly the wrong disk
 - Put the resource specific configs in `/etc/drbd.d/r[0-9].res`
 
+I recommend the following split brain configuration:
+
+```
+net {
+	after-sb-0pri discard-least-changes;
+	after-sb-1pri consensus;
+	after-sb-2pri disconnect;
+}
+```
+
+In the case that split brain is not automatically resolved, it will have to be resolved
+manually.  Google "drbd split brain recovery".  Generally the method to do recovery is
+to pick a victum and invalidate it:
+
+```bash
+drbdadm disconnect r1
+drbdadm secondary r1
+drbdadm connect --discard-my-data r1
+```
+
+Then tell the other system to reconnect:
+
+```bash
+drbdadm primary r1
+drbdadm connect r1
+```
+
 ### Mount filesystems
 
 If you have more than one DRBD partition, do this multiple times...
