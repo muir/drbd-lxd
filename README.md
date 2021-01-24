@@ -1,5 +1,7 @@
 
-!!! AS OF Jan 20, 2021: NEARING COMPLETION, PROBABLY WORKS !!!
+!!! AS OF Jan 20, 2021: NEARING COMPLETION, ALMOST WORKS WORKS !!!
+
+!!! see [current problem](https://discuss.linuxcontainers.org/t/lxc-launch-failed-to-create-file-backup-yaml-no-such-file-or-directory/10021) !!!
 
 # HA setup with LXD + DRBD with real static IP addresses for the containers
 
@@ -207,6 +209,8 @@ net {
 }
 ```
 
+Discard-least-changes should always be safe given the fencing setup (described below).
+
 In the case that split brain is not automatically resolved, it will have to be resolved
 manually.  Google "drbd split brain recovery".  Generally the method to do recovery is
 to pick a victum and invalidate it:
@@ -353,7 +357,7 @@ The first is a wrapper around LXD that sets LD_LIBRARY_PATH
 
 ```bash
 DEST=/usr/local/lxd
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
+sudo echo -n; curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
 sudo chmod +x $DEST/lxdwrapper.sh
 for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename $i`; done
 ```
@@ -365,7 +369,7 @@ If you have more than one DRBD partition, do this multiple times...
 
 ```bash
 fs=r0
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
+sudo echo -n; curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
 sudo chmod +x /usr/local/bin/$fs
 ```
 
@@ -378,7 +382,7 @@ for each drbd filesytem.
 mkdir /var/log/lxd
 
 fs=r0
-cat << END | sudo tee /etc/systemd/system/"$fs"lxd.service
+sudo echo -n; cat << END | sudo tee /etc/systemd/system/"$fs"lxd.service
 [Unit]
 Description=${fs} LXD - main daemon
 After=network-online.target openvswitch-switch.service lxcfs.service
@@ -423,7 +427,7 @@ Would you like to configure LXD to use an existing bridge or host interface? (ye
 Name of the existing bridge or host interface: enp0s3
 Would you like LXD to be available over the network? (yes/no) [default=no]:
 Would you like stale cached images to be updated automatically? (yes/no) [default=yes]
-Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]: yes
+Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]:
 ```
 
 Then create the storage pool manually:
@@ -491,7 +495,7 @@ Run `gcloud init` as root since it will be root that's needing to access the res
 Install the script:
 
 ```bash
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
+sudo echo -n; curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
 sudo chmod +x /usr/local/bin/drbd-fence
 ```
 
@@ -512,7 +516,7 @@ is having some kind of fencing so that if you have only one node up and then bri
 down and then bring up the other node.
 
 ```bash
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-react.sh | sudo tee /usr/local/bin/drbd-react
+sudo echo -n; curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-react.sh | sudo tee /usr/local/bin/drbd-react
 sudo chmod +x /usr/local/bin/drbd-react
 ```
 
@@ -521,7 +525,7 @@ sudo chmod +x /usr/local/bin/drbd-react
 This seems to be the core of systemd...
 
 ```bash
-cat << END | sudo tee /etc/systemd/system/drbd-watcher.service
+sudo echo -n; cat << END | sudo tee /etc/systemd/system/drbd-watcher.service
 [Unit]
 Description=Monitor DRBD for changes
 
@@ -542,7 +546,12 @@ sudo systemctl status drbd-watcher
 ## Using LXD
 
 We'll need a container for the next bit of setup, so either create a fresh
-one or convert one from a prior setup
+one or convert one from a prior setup.
+
+Finding good documentation on the structure of a container has proved somewhat
+challenging.  
+[Stéphane Graber](https://stgraber.org/2016/03/30/lxd-2-0-image-management-512/)
+has the best I've found so far.
 
 ### Create a container
 
@@ -559,25 +568,38 @@ to build your container images.
 
 ### Convert an OpenVZ container
 
-Assuming you have a private (root) directory of an OpenVZ container in `root`:
+Assuming you have a private (root) directory of an OpenVZ container in `rootfs`:
 
-```
-rm -r root/dev root/proc
-mkdir root/dev root/proc
-(cd root; tar czf ../c1.tgz .)
+```bash
+sudo su
+rm -r rootfs/dev rootfs/proc
+mkdir rootfs/dev rootfs/proc
+echo "# unconfigured" > rootfs/etc/fstab
 
-tac metadata <<'END'
-architecture: "x86_64"
-creation_date: 1580073803
+cat rootfs/etc/lsb-release
+
+epoch=`perl -e 'print time'`
+source rootfs/etc/lsb-release
+hn=`cat rootfs/etc/hostname`
+cat > metadata.yaml <<END
+architecture: x86_64
+creation_date: ${epoch}
 properties:
-architecture: "x86_64"
-description: "Ubuntu 14.04"
-os: "debian"
-release: "trusty"
+  description: legacy "${hn}" -- ${DISTRIB_DESCRIPTION}
+  os: ${DISTRIB_ID}
+  release: ${DISTRIB_CODENAME} ${DISTRIB_RELEASE}
 END
+cat metadata.yaml
 
-$fs lxc image import metadata c1.tgz --alias c1image
-$fs lxc launch c1image c1
+container=dns
+tar czf "$container"image.tgz metadata.yaml rootfs
+fs=r0
+$fs lxc image import "$container"image.tgz --alias "$container"image
+$fs lxc launch "$container"image "$container" -s $fs
+$fs lxc image delete "$container"image
+```
+
+The metadata properties are optional.
 ```
 
 ### Static IP addresses
@@ -620,8 +642,8 @@ $fs lxc start c1
 ### Monitoring
 
 The drbd-watcher script installed earlier should take care of most normal failover
-situations.  It doesn't handle absolutely everything and cannot resolve a split-brain
-problem.
+situations.  It doesn't handle absolutely everything and cannot resolve a some
+split-brain problems.
 
 The watcher script is relatively slow compared to most HA setups.  Let's pair it with
 something even slower: a script that send emails whenever the DRBD status changes.
@@ -792,3 +814,5 @@ graphical user interface to control things.
 [Here](https://petrovs.info/2014/11/28/ha-cluster-with-linux-containers/) is a recipe that uses LXC,
 DRBD, and btrfs.  This receipe doesn't include how to do failover.
 
+[Here](https://stgraber.org/) is a recipe for three systems using Ceph.  Includes good hints about how
+to use LXD.
