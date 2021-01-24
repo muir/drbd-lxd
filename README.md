@@ -233,12 +233,24 @@ drbdadm connect r1
 
 ### Mount filesystems
 
+DRBD refers to its shared partitions as resources.  `r0`, `r1`, `r2` etc.
+This recipe will make use these names, mounting `/proc/drbd0` on `/r0`
+and creating an `r0` command that is used as prefix for `lxd` and `lxc` 
+contained with `/r0`.  The end result are commands like:
+
+```bash
+r0 start
+r0 lxd init
+r0 lxc storage list
+r0 stop
+```
+
 If you have more than one DRBD partition, do this multiple times...
 
 ```bash
 drbd=0
-fs=r$drbd
 
+fs=r$drbd
 sudo mkdir /$fs
 echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | sudo tee -a /etc/fstab
 sudo mount /$fs
@@ -360,7 +372,8 @@ The first is a wrapper around LXD that sets LD_LIBRARY_PATH
 
 ```bash
 DEST=/usr/local/lxd
-sudo echo -n; curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
+sudo echo -n
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/lxdwrapper.sh | sudo tee $DEST/lxdwrapper.sh
 sudo chmod +x $DEST/lxdwrapper.sh
 for i in $DEST/bin/*; do sudo ln -s $DEST/lxdwrapper.sh /usr/local/bin/`basename $i`; done
 ```
@@ -372,7 +385,8 @@ If you have more than one DRBD partition, do this multiple times...
 
 ```bash
 fs=r0
-sudo echo -n; curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
+sudo echo -n
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
 sudo chmod +x /usr/local/bin/$fs
 ```
 
@@ -498,7 +512,8 @@ Run `gcloud init` as root since it will be root that's needing to access the res
 Install the script:
 
 ```bash
-sudo echo -n; curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
+sudo echo -n
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-fence.sh | sudo tee /usr/local/bin/drbd-fence
 sudo chmod +x /usr/local/bin/drbd-fence
 ```
 
@@ -519,7 +534,8 @@ is having some kind of fencing so that if you have only one node up and then bri
 down and then bring up the other node.
 
 ```bash
-sudo echo -n; curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-react.sh | sudo tee /usr/local/bin/drbd-react
+sudo echo -n
+curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/drbd-react.sh | sudo tee /usr/local/bin/drbd-react
 sudo chmod +x /usr/local/bin/drbd-react
 ```
 
