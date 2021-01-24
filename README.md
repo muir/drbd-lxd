@@ -1,5 +1,5 @@
 
-!!! AS OF Jan 20, 2021: NEARING COMPLETION, ALMOST WORKS WORKS !!!
+!!! AS OF Jan 20, 2021: NEARING COMPLETION, ALMOST WORKS !!!
 
 !!! see [current problem](https://discuss.linuxcontainers.org/t/lxc-launch-failed-to-create-file-backup-yaml-no-such-file-or-directory/10021) !!!
 
@@ -65,6 +65,9 @@ is painful.
 Documentation of LXD is plentiful and incomplete.  LXD is very flexible and can be
 deployed in all sorts of situations.  Most of the documentation has examples that
 were not useful for developing this recipe.
+
+LXD has a huge set of features that OpenVZ lacks.  Remote access.  More flexibility
+in many ways.  That's great if the features and flexibilty match your requirements.
 
 ### DRBD
 
@@ -185,8 +188,8 @@ not what this recipe is about).
 
 use `cfdisk` (or whatever partition tool you prefer) to create partitions
 on the disk to be used for drbd.
-one 128MB times number-of-data-partitions partition for the meta-data.
-the rest of the disk for data.
+One `28MB times number-of-data-partitions partition for the meta-data.
+The rest of the disk for data.
 The number of data partitions should probably be one or two.
 
 ### Set up DRBD
