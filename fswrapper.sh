@@ -25,10 +25,16 @@ case "$cmd" in
 		mount "/$fs/pools"
 		sleep 1
 		systemctl start "$fs"lxd
+		if [[ -e "/$fs/post-up" ]]; then
+			/$fs/actions/post-up
+		fi
 		;;
 	stop)
 		set -x
 		export LXD_DIR="/$fs/lxd"
+		if [[ -e "/$fs/post-up" ]]; then
+			/$fs/actions/pre-down
+		fi
 		$bin/lxc stop --all
 		$bin/lxc stop -f --all
 		systemctl stop "$fs"lxd

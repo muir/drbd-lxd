@@ -1,8 +1,6 @@
 
 !!! AS OF Jan 20, 2021: NEARING COMPLETION, ALMOST WORKS !!!
 
-!!! see [current problem](https://discuss.linuxcontainers.org/t/lxc-launch-failed-to-create-file-backup-yaml-no-such-file-or-directory/10021) !!!
-
 # HA setup with LXD + DRBD with real static IP addresses for the containers
 
 This is a recipe for a two-node shared-nothing high-availablity container server with
@@ -316,8 +314,10 @@ cd lxc-$LXC_VERSION
 
 ### Build LXD
 
-The
-[build instructions](https://github.com/lxc/lxd) on the official site
+Do not try to build by checking the source out from github: through at
+least version 4.10, the repo does not include dependency tracking and
+thus building that way is not reliabile.
+The [build instructions](https://github.com/lxc/lxd) on the official site
 don't work.  Try these instead.
 
 ```bash
@@ -409,7 +409,7 @@ Documentation=man:lxd(1)
 
 [Service]
 EnvironmentFile=-/etc/environment
-Environment=LXD_DIR=${fs}/lxd
+Environment=LXD_DIR=/${fs}/lxd
 ExecStartPre=/usr/lib/x86_64-linux-gnu/lxc/lxc-apparmor-load
 ExecStart=/usr/local/bin/lxd --group lxd --logfile=/var/log/lxd/lxd.log
 ExecStartPost=/usr/local/bin/lxd waitready --timeout=600
@@ -454,6 +454,17 @@ drbd=0
 sudo btrfs subvolume create /${fs}/pools
 echo "/dev/drbd$drbd /$fs/pools btrfs rw,noauto,relatime,space_cache,subvol=/pools,ssd 0 0 " | sudo tee -a /etc/fstab
 sudo $fs lxc storage create ${fs} btrfs source=/${fs}/pools
+```
+
+LXD defaults to wanting a particular uid/gid map range available to it.  This has to be manually configured
+so that when LXD asks for the map it is expecting to get it can get it.
+
+```bash
+sudo cat <<END | sudo tee -a /etc/subuid | sudo tee -a /etc/subgid
+root:1000000:1000000000
+lxd:1000000:1000000000
+END
+cat /etc/subuid
 ```
 
 ### DRBD watcher script
@@ -544,7 +555,7 @@ sudo chmod +x /usr/local/bin/drbd-react
 This seems to be the core of systemd...
 
 ```bash
-sudo echo -n; cat << END | sudo tee /etc/systemd/system/drbd-watcher.service
+sudo cat << END | sudo tee /etc/systemd/system/drbd-watcher.service
 [Unit]
 Description=Monitor DRBD for changes
 
