@@ -627,14 +627,21 @@ fs=r0
 $fs lxc image import "$container"image.tgz --alias "$container"image
 $fs lxc launch "$container"image "$container" -s $fs
 $fs lxc image delete "$container"image
-```
-
-The metadata properties are optional.
+$fs lxc config set "$container" boot.autostart true
 ```
 
 ### Static IP addresses
 
-Setting static IP addresses can be done two ways.  First stop the container:
+The LXD documentation for networking is
+[here](https://linuxcontainers.org/lxd/docs/master/networks).
+
+Simo has a good writeup of using `routed` networking 
+[here](https://blog.simos.info/how-to-get-lxd-containers-get-ip-from-the-lan-with-routed-network/).
+
+Like most things LXD, there are many ways to do things.  I suggest using `nictype: routed`.  The
+big disadvantage of `nictype: routed` is that you cannot add IP addresses to a running container.
+
+Setting that up can be done in multiple ways.  First stop the container:
 
 ```bash
 $fs lxc stop c1
@@ -643,13 +650,13 @@ $fs lxc stop c1
 You can do it with a command line:
 
 ```bash
-$fs lxc config device set c1 eth0 nictype=routed parent=enp0s8 ipv4.address 172.20.10.88
+$fs lxc config device add c1 eth0 name=eth0 nictype=routed parent=enp0s3 type=nic ipv4.address=172.20.10.88
 ```
 
 Or edit the config of a container
 and configure multiple static IP addresses.  For example:
 
-`$fs lxc config edit dnstest` then define the network with:
+`$fs lxc config edit c1` then define the network with:
 
 ```yaml
 devices:
@@ -689,6 +696,11 @@ sudo echo -n; (sudo crontab -l; cat <<END) | sudo crontab -
 59              0       * * * /usr/local/bin/drbd-status-emailer noisy
 END
 ```
+
+### Further changes for produciton use
+
+See [production setup](https://linuxcontainers.org/lxd/docs/master/production-setup) in the
+LXD documentation for further suggestions on configuring hosts for running a lot of containers.
 
 ### What else is needed?
 
