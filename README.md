@@ -128,6 +128,29 @@ is somewhat expensive so we don't want a daemon that reacts instantly.
 Instead, we'll leverage the built-in monitoring that DRBD provides to invoke
 scripts when the DRBD situation changes.  [drbd-watcher](https://github.com/muir/drbd-watcher) 
 
+### Bridged vs routed vs NAT
+
+The goal of this recipe is full systems with static IP addresses.  Using various
+bridges (`bridge-utils`, LXD bridge, etc) it is possible to set up LXD (and LXC)
+with static IPs that allow the host to reach the container and vice versa.  It's
+a bit painful, but it mostly works.
+
+It falls down when the containers try to talk to other systems on the same
+network.  ARP Reply packets don't make it back to the containers.  There are
+a couple of possible hacky solutions:
+
+- [fake briding](https://linux.die.net/man/8/parprouted) -- unexplored
+- [forced arp](https://linux.die.net/man/8/send_arp) -- hacky, error prone, hard to manage
+- a working bridge?   I didn't find one.
+
+In LXD 3.18, there is a new `nictype` supported: `routed` that does exactly
+what's wanted.
+
+Since we're installing LXD manually anyway, we can use the latest version.  
+Note: Ubuntu 18.04 includes lxd as a regular package, but the version is too
+old to support routed networking.
+
+
 ## Recipe
 
 After installing Ubuntu 20.04 server...
@@ -205,28 +228,35 @@ I recommend the following split brain configuration:
 ```
 net {
 	after-sb-0pri discard-least-changes;
-	after-sb-1pri consensus;
+	after-sb-1pri discard-secondary;
 	after-sb-2pri disconnect;
 }
 ```
 
-Discard-least-changes should always be safe given the fencing setup (described below).
+These are extreme options that depend upon using external fencing.  External fencing
+is part of the recipe below.
+Because of the use of the fencing, the only situation where split brain is possible
+is when a node crashes and the other comes up.  That counts as split brain because the
+node that crashed may have made last-minute changes that didn't get synced.  It's not
+really split brain so we want to forceably kill it.  
 
-In the case that split brain is not automatically resolved, it will have to be resolved
-manually.  Google "drbd split brain recovery".  Generally the method to do recovery is
+With the above options, if somehow split brain isn't automatically resolved then
+google "drbd split brain recovery".  Generally the method to do recovery is
 to pick a victum and invalidate it:
 
+
+
 ```bash
-drbdadm disconnect r1
-drbdadm secondary r1
-drbdadm connect --discard-my-data r1
+drbdadm disconnect r9
+drbdadm secondary r9
+drbdadm connect --discard-my-data r9
 ```
 
 Then tell the other system to reconnect:
 
 ```bash
-drbdadm primary r1
-drbdadm connect r1
+drbdadm primary r9
+drbdadm connect r9
 ```
 
 ### Mount filesystems
@@ -253,28 +283,6 @@ sudo mkdir /$fs
 echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | sudo tee -a /etc/fstab
 sudo mount /$fs
 ```
-
-### Bridged vs routed vs NAT
-
-The goal of this recipe is full systems with static IP addresses.  Using various
-bridges (`bridge-utils`, LXD bridge, etc) it is possible to set up LXD (and LXC)
-with static IPs that allow the host to reach the container and vice versa.  It's
-a bit painful, but it mostly works.
-
-It falls down when the containers try to talk to other systems on the same
-network.  ARP Reply packets don't make it back to the containers.  There are
-a couple of possible hacky solutions:
-
-- [fake briding](https://linux.die.net/man/8/parprouted) -- unexplored
-- [forced arp](https://linux.die.net/man/8/send_arp) -- hacky, error prone, hard to manage
-- a working bridge?   I didn't find one.
-
-In LXD 3.18, there is a new `nictype` supported: `routed` that does exactly
-what's wanted.
-
-Since we're installing LXD manually anyway, we can use the latest version.  
-Note: Ubuntu 18.04 includes lxd as a regular package, but the version is too
-old to support routed networking.
 
 ## Build LXC/LXD from source
 
