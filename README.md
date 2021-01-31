@@ -155,36 +155,6 @@ old to support routed networking.
 
 After installing Ubuntu 20.04 server...
 
-### Ditch netplan
-
-Set up networking using `/etc/network/interfaces` since netplan does not support
-interface aliases and is thus not suitable for anything custom.
-
-```bash
-sudo apt install ifupdown net-tools
-echo 'network: {config: disabled}' | sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
-```
-
-This is the `/etc/network/interfaces` file on my test box:
-
-```
-auto lo
-iface lo inet loopback
-
-auto enp0s3
-iface enp0s3 inet dhcp
-
-iface enp0s8 inet static
-        address 172.20.10.4/24
-```
-
-Once that's done you can make it totally final with:
-
-```bash
-dpkg -P cloud-init
-rm -rf /etc/cloud
-```
-
 Ubuntu 20.04 can delay startup while looking for a network.  This isn't helpful for a server.
 Disable it for good:
 
@@ -223,7 +193,7 @@ Suggestions:
 - Use /dev/disk/by-partuuid/xxxxx to reference partition so that if you ever have a disk missing at boot you don't try to overly the wrong disk
 - Put the resource specific configs in `/etc/drbd.d/r[0-9].res`
 
-I recommend the following split brain configuration:
+I suggest the following split brain configuration:
 
 ```
 net {
@@ -277,10 +247,13 @@ If you have more than one DRBD partition, do this multiple times...
 
 ```bash
 drbd=0
-
 fs=r$drbd
 sudo mkdir /$fs
-echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=/,ssd 0 0 " | sudo tee -a /etc/fstab
+sudo mount /dev/drbd$drbd /$fs
+sudo btrfs subvolume snapshot /$fs /$fs/fsroot
+sudo btrfs subvolume set-default `sudo btrfs subvolume list /$fs | awk '/path fsroot$/{print $2}'` /$fs
+sudo umount /$fs
+echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=fsroot,ssd 0 0 " | sudo tee -a /etc/fstab
 sudo mount /$fs
 ```
 
@@ -460,7 +433,7 @@ Then create the storage pool manually:
 ```bash
 drbd=0
 sudo btrfs subvolume create /${fs}/pools
-echo "/dev/drbd$drbd /$fs/pools btrfs rw,noauto,relatime,space_cache,subvol=/pools,ssd 0 0 " | sudo tee -a /etc/fstab
+echo "/dev/drbd$drbd /$fs/pools btrfs rw,noauto,relatime,space_cache,subvol=pools,ssd 0 0 " | sudo tee -a /etc/fstab
 sudo $fs lxc storage create ${fs} btrfs source=/${fs}/pools
 ```
 
