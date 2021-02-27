@@ -11,7 +11,7 @@ redundancy.  Containers have persistent storage that fails over with the
 contaniner.
 
 This is an excellent choice for a 2-system setup.  It works fine with a few
-systems but for more than a few, other setups are reccomended.
+systems but for more than a few, other setups are reccomended.  
 
 ## Stack choices
 
@@ -246,15 +246,16 @@ r0 stop
 If you have more than one DRBD partition, do this multiple times...
 
 ```bash
-drbd=0
-fs=r$drbd
-sudo mkdir /$fs
-sudo mount /dev/drbd$drbd /$fs
-sudo btrfs subvolume snapshot /$fs /$fs/fsroot
-sudo btrfs subvolume set-default `sudo btrfs subvolume list /$fs | awk '/path fsroot$/{print $2}'` /$fs
-sudo umount /$fs
-echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=fsroot,ssd 0 0 " | sudo tee -a /etc/fstab
-sudo mount /$fs
+for drbd in 0 1 2; do 
+	fs=r$drbd
+	sudo mkdir /$fs
+	sudo mount /dev/drbd$drbd /$fs
+	sudo btrfs subvolume snapshot /$fs /$fs/fsroot
+	sudo btrfs subvolume set-default `sudo btrfs subvolume list /$fs | awk '/path fsroot$/{print $2}'` /$fs
+	sudo umount /$fs
+	echo "/dev/drbd$drbd /$fs btrfs rw,noauto,relatime,space_cache,subvol=fsroot,ssd 0 0 " | sudo tee -a /etc/fstab
+	sudo mount /$fs
+done
 ```
 
 ## Build LXC/LXD from source
@@ -302,7 +303,7 @@ The [build instructions](https://github.com/lxc/lxd) on the official site
 don't work.  Try these instead.
 
 ```bash
-LXD_VERSION=4.10
+LXD_VERSION=4.11
 mkdir -p $HOME/LXD
 cd $HOME/LXD
 wget https://linuxcontainers.org/downloads/lxd/lxd-$LXD_VERSION.tar.gz
@@ -365,10 +366,11 @@ for each drbd partition.
 If you have more than one DRBD partition, do this multiple times...
 
 ```bash
-fs=r0
-sudo echo -n
-curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
-sudo chmod +x /usr/local/bin/$fs
+for fs in r0 r1 r2; do
+	sudo echo -n
+	curl -s https://raw.githubusercontent.com/muir/drbd-lxd/main/fswrapper.sh | sudo tee /usr/local/bin/$fs
+	sudo chmod +x /usr/local/bin/$fs
+done
 ```
 
 ## Set up LXD
@@ -379,12 +381,12 @@ for each drbd filesytem.
 ```bash
 mkdir /var/log/lxd
 
-fs=r0
-sudo echo -n; cat << END | sudo tee /etc/systemd/system/"$fs"lxd.service
+for fs in r0 r1 r2; do
+	sudo echo -n; cat << END | sudo tee /etc/systemd/system/"$fs"lxd.service
 [Unit]
 Description=${fs} LXD - main daemon
-After=network-online.target openvswitch-switch.service lxcfs.service
-Requires=network-online.target lxcfs.service
+After=lxcfs.service
+Requires=lxcfs.service
 ConditionPathExists=/${fs}/lxd
 Documentation=man:lxd(1)
 
@@ -403,8 +405,10 @@ LimitNPROC=infinity
 TasksMax=infinity
 END
 
-mkdir /$fs/lxd
-systemctl start "$fs"lxd
+	sudo mkdir -p /$fs/lxd
+	sudo systemctl daemon-reload
+	sudo systemctl start "$fs"lxd
+done
 ```
 
 ### Initialize LXD
@@ -431,10 +435,11 @@ Would you like a YAML "lxd init" preseed to be printed? (yes/no) [default=no]:
 Then create the storage pool manually:
 
 ```bash
-drbd=0
-sudo btrfs subvolume create /${fs}/pools
-echo "/dev/drbd$drbd /$fs/pools btrfs rw,noauto,relatime,space_cache,subvol=pools,ssd 0 0 " | sudo tee -a /etc/fstab
-sudo $fs lxc storage create ${fs} btrfs source=/${fs}/pools
+for drbd in 0 1 2; do 
+	fs=r$drbd
+	sudo btrfs subvolume create /${fs}/pools
+	sudo $fs lxc storage create ${fs} btrfs source=/${fs}/pools
+done
 ```
 
 LXD defaults to wanting a particular uid/gid map range available to it.  This has to be manually configured
@@ -499,7 +504,7 @@ using a google account for this that is only used for this.
 
 Install [gsutil & gcloud](https://cloud.google.com/storage/docs/gsutil_install#deb)
 
-Run `gcloud init` as root since it will be root that's needing to access the resources.
+Run `sudo gcloud init`.  As root since it will be root that's needing to access the resources.
 
 Install the script:
 
@@ -512,9 +517,9 @@ sudo chmod +x /usr/local/bin/drbd-fence
 Test it:
 
 ```bash
-/usr/local/bin/drbd-fence unlock r0
-/usr/local/bin/drbd-fence lock r0
-/usr/local/bin/drbd-fence unlock r0
+sudo /usr/local/bin/drbd-fence unlock r0
+sudo /usr/local/bin/drbd-fence lock r0
+sudo /usr/local/bin/drbd-fence unlock r0
 ```
 
 Initialize the fence by unlocking each resource.
@@ -602,9 +607,9 @@ properties:
 END
 cat metadata.yaml
 
-container=dns
-tar czf "$container"image.tgz metadata.yaml rootfs
-fs=r0
+container=blacklist
+tar cSzf "$container"image.tgz metadata.yaml --numeric-owner rootfs
+fs=r2
 $fs lxc image import "$container"image.tgz --alias "$container"image
 $fs lxc launch "$container"image "$container" -s $fs
 $fs lxc image delete "$container"image
@@ -644,7 +649,7 @@ devices:
   eth0:
     ipv4.address: 172.20.10.88, 172.20.10.90
     nictype: routed
-    parent: enp0s8
+    parent: enp1s0f0
     type: nic
 ```
 
@@ -690,7 +695,7 @@ Other things that are needed to really complete the setup are:
 - backups
 - synchronization script between the two hosts
 - monitoring/paging to let you know if something is down
-- remote recovery (see PXEboot section below)
+- remote recovery (see [PXE booting](bootserver.md))
 
 ### Bonding ethernets for reliability and capacity
 
@@ -736,97 +741,12 @@ setup, there are other services that might need a solution.  For example,
 it's probably better to run OpenVPN on the main servers rather than trying
 to put it inside a container.
 
-```bash
-apt install ucarp
-```
-
-### PXE boot
-
-PXE boot so that if one system goes down, you can use the other one to
-help fix it.  There are many ways to do this.  The easiest is to use
-tftp to serve a pxelinux that boots using a ramdisk loaded over http.
+[Stack Exchange](https://askubuntu.com/questions/1149275/using-netplan-with-ucarp) has
+some good hints about how to do this.
 
 ```bash
-sudo apt install atftpd openbsd-inetd micro-httpd isc-dhcp-server
+apt install ucarp arping
 ```
-
-Turn off serving on port 80.  Why does anything think that installing an unconfigured
-web server is a good idea?
-Since nobody uses gopher anymore, that's a fine port for serving /tftpboot files
-
-```bash
-sudo perl -p -i -e 's/^(www\s)/#$1/' /etc/inetd.conf
-sudo perl -p -i -e 'm/^tftp/ && s,\s/srv/tftp$, /tftpboot,' /etc/inetd.conf
-sudo perl -p -i -e '/^tftp\s/ && print "gopher	stream	tcp	nowait	nobody	/usr/sbin/tcpd /usr/sbin/micro-httpd /tftpboot\n"' /etc/inetd.conf
-sudo service openbsd-inetd restart
-```
-
-Build a /tftpboot
-
-#### Base /tftpboot
-
-```bash
-sudo apt install pxelinux syslinux-common
-sudo cp /usr/lib/PXELINUX/pxelinux.0 /tftpboot/
-sudo mkdir -p /tftpboot/pxelinux.cfg /tftpboot/menus
-sudo cp /usr/lib/syslinux/modules/bios/ldlinux.c32 /tftpboot
-
-sudo tee /tftpboot/pxelinux.cfg/default <<END
-DEFAULT	disk
-PROMPT	1
-SERIAL	0 9600 0x003
-TIMEOUT	200
-DISPLAY	menus/bootmsg.DISPLAY.default
-
-LABEL	disk
-	LOCALBOOT	0
-END
-
-sudo tee /tftpboot/menus/bootmsg.DISPLAY.default <<END
-	boot choices
-
-disk		boot from local disk (DEFAULT)
-END
-
-sudo chmod -R a+r /tftpboot
-```
-
-#### Add an ubuntu live CD
-
-Pick one from [here](http://releases.ubuntu.com/)
-
-```bash
-VERSION=20.04.1
-wget http://old-releases.ubuntu.com/releases/$VERSION/ubuntu-$VERSION-live-server-amd64.iso
-sudo mkdir -p /tftpboot/ubuntu$VERSION
-sudo cp ubuntu-$VERSION-live-server-amd64.iso /tftpboot/ubuntu$VERSION
-sudo mount /tftpboot/ubuntu$VERSION/ubuntu-$VERSION-live-server-amd64.iso /mnt
-sudo cp /mnt/casper/vmlinuz /mnt/casper/initrd /tftpboot/ubuntu$VERSION
-sudo umount /mnt
-
-MY_IP=`ip route get 8.8.8.8 | sed -n '/src/{s/.*src *\([^ ]*\).*/\1/p;q}'`
-echo my ip address is $MY_IP
-
-sudo tee -a /tftpboot/pxelinux.cfg/default <<END
-
-LABEL	ubuntu${VERSION}
-	KERNEL ubuntu${VERSION}/vmlinuz
-	INITRD ubuntu${VERSION}/initrd
-	APPEND root=/dev/ram0 ramdisk_size=1500000 ip=dhcp url=http://${MY_IP}:70/ubuntu${VERSION}/ubuntu-${VERSION}-live-server-amd64.iso
-END
-
-sudo tee -a /tftpboot/menus/bootmsg.DISPLAY.default <<END
-ubuntu${VERSION}   boot ubuntu live cd
-END
-
-sudo chmod -R a+r /tftpboot
-```
-
-You also need to [configure your DHCP server](https://help.ubuntu.com/community/DisklessUbuntuHowto).
-Note: follow the instructions there just for DHCP setup.  You won't need NFS.
-
-There are also decent DHCP server setup instructions in
-`/usr/share/doc/syslinux-common/asciidoc/pxelinux.txt.gz`
 
 ## Other recipes
 
