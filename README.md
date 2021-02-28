@@ -662,6 +662,19 @@ Then restart:
 $fs lxc start c1
 ```
 
+If you have a container that is providing DHCP service, then it cannot use routed networking
+and instead needs to use bridged networking.  
+
+[Configure a bridge](https://www.techrepublic.com/article/how-to-create-a-bridge-network-on-linux-with-netplan/)
+for the host or let LXD do it with `init`.
+
+```bash
+$fs lxc config device add c1 eth0 name=eth0 nictype=bridged parent=br0 type=nic ipv4.address=172.20.10.88
+```
+
+
+
+
 ### Monitoring
 
 The drbd-watcher script installed earlier should take care of most normal failover
@@ -683,7 +696,7 @@ sudo echo -n; (sudo crontab -l; cat <<END) | sudo crontab -
 END
 ```
 
-### Further changes for produciton use
+### Further changes for production use
 
 See [production setup](https://linuxcontainers.org/lxd/docs/master/production-setup) in the
 LXD documentation for further suggestions on configuring hosts for running a lot of containers.

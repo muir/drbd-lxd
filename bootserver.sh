@@ -1,7 +1,7 @@
 #!/bin/echo 
 
 # this collecion of scripts will set up a boot server
-# as a ubuntu container 
+# as a ubuntu container
 
 # before running this, edit bs-config.sh for your environement
 
