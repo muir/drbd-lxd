@@ -86,7 +86,7 @@ echo "$netplan" | $cmd lxc file push - $name/etc/netplan/10-manual.yaml
 $cmd lxc exec $name -- rm /etc/netplan/50-cloud-init.yaml < /dev/null
 $cmd lxc exec $name -- netplan apply < /dev/null
 $cmd lxc stop $name --timeout=10 || $cmd lxc stop -f $name
-$cmd lxc config device add $name eth0 name=eth0 nictype=routed \
+$cmd lxc config device add $name eth0 name=eth0 nictype="$containerRouting" \
 	parent=$hostInterface type=nic ipv4.address=$containerIP
 # $cmd lxc config show $name 
 $cmd lxc start $name
