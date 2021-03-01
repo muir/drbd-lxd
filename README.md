@@ -1,5 +1,5 @@
 
-!!! AS OF Jan 20, 2021: NEARING COMPLETION, ALMOST WORKS !!!
+!!! AS OF Feb 28, 2021: Setup is live !!!
 
 # HA setup with LXD + DRBD with real static IP addresses for the containers
 
