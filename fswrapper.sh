@@ -14,11 +14,7 @@ unset F
 
 shift 1
 case "$cmd" in
-	lxc|lxd)
-		export LXD_DIR="/$fs/lxd"
-		exec $bin/$cmd "$@"
-		;;
-	start)
+	primary)
 		if [[ "$1" != "" ]]; then
 			echo "did you mean $bin lxc start $@ ?"
 			exit 1
@@ -36,7 +32,7 @@ case "$cmd" in
 			/$fs/actions/post-up
 		fi
 		;;
-	stop|suspend)
+	secondary|suspend)
 		if [[ "$1" != "" ]]; then
 			echo "did you mean $bin lxc stop $@ ?"
 			exit 1
@@ -49,20 +45,30 @@ case "$cmd" in
 		$bin/lxc stop --all --timeout 10
 		$bin/lxc stop -f --all
 		systemctl stop "$fs"lxd
-		fuser -k -m "/$fs/pools"
-		fuser -k -m "/$fs/lxd/storage-pools/$fs"
-		fuser -k -m "/$fs"
+		fuser -k -m -M "/$fs/lxd/storage-pools/$fs"
+		fuser -k -m -M "/$fs"
 		umount -R "/$fs"
 		systemctl stop multipathd
-		if [[ "$cmd" = "stop" ]]; then
+		if [[ "$cmd" = "secondary" ]]; then
 			drbdadm secondary $resource
 		fi
 		# kill -USR1 `cat /proc/pid....`
 		;;
+	lxc|lxd)
+		export LXD_DIR="/$fs/lxd"
+		exec $bin/$cmd "$@"
+		;;
+	init)
+		export LXD_DIR="/$fs/lxd"
+		exec $bin/lxd $cmd "$@"
+		;;
+	"")
+		echo "$0 primary|secondary|suspend|lxc|lxd"
+		echo "defaults to lxc"
+		exit 
 	*)
-		echo "unknown command."
-		echo "commands are: $0 lxc|lxd|start|stop"
-		exit 1
+		export LXD_DIR="/$fs/lxd"
+		exec $bin/lxc $cmd "$@"
 		;;
 esac
 

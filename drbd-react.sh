@@ -40,15 +40,15 @@ if [[ "$self_role" == "Secondary" ]] && [[ "$self_disk" == "UpToDate" ]]; then
 		/usr/local/bin/drbd-fence lock $resource
 	fi
 	echo "$resource - become primary and start services"
-	/usr/local/bin/$resource start
+	/usr/local/bin/$resource primary
 fi
 
 if [[ "$self_role" == "Primary" ]] && [[ "$OLD_SELF_ROLE" != "Primary" ]]; then
 	echo "$resource - start services"
-	/usr/local/bin/$resource start
+	/usr/local/bin/$resource primary
 fi
 
 if [[ "$self_role" == "Primary" ]] && [[ "$self_disk" != "UpToDate" ]] && [[ "$remote_disk" == "UpToDate" ]] && [[ "$connection" == "Connected" ]]; then 
 	echo "$resource - demote self, stopping services"
-	/usr/local/bin/$resource stop
+	/usr/local/bin/$resource secondary
 fi
