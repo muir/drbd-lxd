@@ -66,6 +66,7 @@ case "$cmd" in
 		echo "$0 primary|secondary|suspend|lxc|lxd"
 		echo "defaults to lxc"
 		exit 
+		;;
 	*)
 		export LXD_DIR="/$fs/lxd"
 		exec $bin/lxc $cmd "$@"
