@@ -9,7 +9,7 @@
 # For most purposes, 'routed' is cleaner, but 'bridged' is required for a DHCP server
 #
 
-source ./bs-config.sh
+source "${CONTAINER_CONFIG:-./bs-config.sh}"
 
 # GENERATE THE CONTAINER NETPLAN
 

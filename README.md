@@ -1,6 +1,4 @@
 
-!!! AS OF Feb 28, 2021: Setup is live !!!
-
 # HA setup with LXD + DRBD with real static IP addresses for the containers
 
 This is a recipe for a two-node shared-nothing high-availablity container server with
@@ -150,6 +148,10 @@ Since we're installing LXD manually anyway, we can use the latest version.
 Note: Ubuntu 18.04 includes lxd as a regular package, but the version is too
 old to support routed networking.
 
+Update March 2021: `routed` seems to work only some of the time.  When it stops
+working, rebooting the host fixes the problem.  The symptom is that the host
+stops doing proxy APR on behalf of the routed addresses so they're no longer
+visible from other systems on the network.  A better "fix" is desired.
 
 ## Recipe
 
